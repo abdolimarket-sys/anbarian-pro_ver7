@@ -115,9 +115,9 @@ function ensureModal(): HTMLElement {
         </div>
         <label class="field"><span>تاریخ انقضا</span><input id="productExpiry" type="date" /></label>
         <label class="field"><span>یادداشت</span><textarea id="productNote" rows="2"></textarea></label>
-        <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn btn-secondary" id="productCancel" style="flex:1">انصراف</button>
+        <div style="display:flex;gap:8px;margin-top:14px;direction:rtl">
           <button type="submit" class="btn btn-primary" style="flex:1.4">ذخیره</button>
+          <button type="button" class="btn btn-secondary" id="productCancel" style="flex:1">انصراف</button>
         </div>
         <button type="button" class="btn btn-secondary btn-block" id="productDelete" style="margin-top:8px;display:none;color:var(--danger)">حذف کالا</button>
       </form>
@@ -156,17 +156,23 @@ function ensureModal(): HTMLElement {
   return modal;
 }
 
-function ensureProductUnitOption(unit: string): void {
+const PRODUCT_BASE_UNITS = [
+  'عدد', 'کیلوگرم', 'گرم', 'میلی‌گرم', 'لیتر', 'میلی‌لیتر', 'متر', 'سانتی‌متر', 'مترمربع',
+  'جفت', 'دست', 'شاخه', 'رول', 'قوطی', 'بسته', 'کارتن', 'جعبه', 'گالن', 'بشکه', 'سایر',
+] as const;
+
+function rebuildProductUnitOptions(preferred?: string): void {
   const select = document.getElementById('productUnit') as HTMLSelectElement | null;
-  const value = (unit || '').trim();
-  if (!select || !value) return;
-  const exists = Array.from(select.options).some((option) => option.value === value);
-  if (!exists) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value;
-    select.appendChild(option);
-  }
+  if (!select) return;
+  const current = (preferred ?? select.value ?? 'عدد').trim() || 'عدد';
+  const values = Array.from(new Set<string>([...PRODUCT_BASE_UNITS, current]));
+  select.innerHTML = values.map((u) => `<option value="${u.replace(/"/g, '&quot;')}">${u}</option>`).join('');
+  select.disabled = false;
+  select.value = values.includes(current) ? current : 'عدد';
+}
+
+function ensureProductUnitOption(unit: string): void {
+  rebuildProductUnitOptions(unit);
 }
 
 function val(id: string): string {
@@ -283,7 +289,7 @@ export function openProductModal(
     if (el) el.value = '';
   });
 
-  (document.getElementById('productUnit') as HTMLSelectElement).value = 'عدد';
+  rebuildProductUnitOptions('عدد');
   (document.getElementById('productUnitFactor') as HTMLInputElement).value = '1';
   (document.getElementById('productSystemQty') as HTMLInputElement).value = '0';
   (document.getElementById('productPurchasePrice') as HTMLInputElement).value = '0';

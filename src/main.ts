@@ -680,13 +680,13 @@ function renderShell() {
           <div class="card due-settings-card settings-inner-card" style="margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--primary-soft)">
             <h3 style="margin:0 0 8px;font-size:1rem;color:var(--primary-dark);text-align:right">هشدار سررسید</h3>
             <label class="due-check-row" for="setDueReminderEnabled">
-              <span class="due-check-text">نمایش هشدار اسناد سررسیدشده هنگام ورود به برنامه</span>
               <input type="checkbox" id="setDueReminderEnabled" />
+              <span class="due-check-text">نمایش هشدار اسناد سررسیدشده هنگام ورود به برنامه</span>
             </label>
             <p class="hint" style="margin:0 0 12px;text-align:right">هشدار فقط با فعال‌سازی این گزینه نمایش داده می‌شود و برای جلوگیری از تکرار، در هر روز فقط یک‌بار نشان داده خواهد شد.</p>
             <label class="due-check-row" for="setDueNotificationEnabled">
-              <span class="due-check-text">اعلان بومی اندروید برای سررسید اسناد</span>
               <input type="checkbox" id="setDueNotificationEnabled" />
+              <span class="due-check-text">اعلان بومی اندروید برای سررسید اسناد</span>
             </label>
             <label class="field due-time-field" style="display:block;margin-bottom:12px;text-align:right">
               <span style="font-size:.82rem;font-weight:700;color:var(--primary-dark)">ساعت اعلان روز سررسید</span>
@@ -696,8 +696,8 @@ function renderShell() {
             <h3 style="margin:0 0 8px;font-size:1rem;color:var(--primary-dark);text-align:right">ارسال پیامک</h3>
             <p class="hint" style="margin:0 0 10px;text-align:right">اختیاری است. حالت «پیامک گوشی» بدون API کار می‌کند. برای ارسال خودکار: کاوه‌نگار، فراز اس‌ام‌اس، ملی‌پیامک یا آدرس سفارشی.</p>
             <label class="due-check-row" for="setSmsEnabled">
-              <span class="due-check-text">فعال‌سازی ارسال پیامک</span>
               <input type="checkbox" id="setSmsEnabled" />
+              <span class="due-check-text">فعال‌سازی ارسال پیامک</span>
             </label>
             <label class="field" style="display:block;margin-bottom:8px">
               <span style="font-size:.82rem;font-weight:700;color:var(--text-soft)">روش ارسال</span>

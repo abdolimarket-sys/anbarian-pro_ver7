@@ -3409,6 +3409,7 @@ body > .invoice-jalali-calendar {
   color: var(--primary-dark);
   font-weight: 700;
 }
+/* ظاهر بومی select حفظ می‌شود تا در اندروید WebView دوباره باز شود */
 .product-unit-select,
 #productUnit.product-unit-select {
   width: 100%;
@@ -3416,19 +3417,16 @@ body > .invoice-jalali-calendar {
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%);
+  background-color: var(--card);
   color: var(--text);
   font: inherit;
   font-weight: 600;
   outline: none;
-  appearance: none;
-  background-image:
-    linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2308734f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: 0 0, left 12px center;
-  background-size: 100% 100%, 12px 8px;
-  padding-left: 28px;
+  -webkit-appearance: menulist;
+  appearance: menulist;
+  pointer-events: auto;
+  z-index: 2;
+  position: relative;
 }
 .product-unit-select:focus,
 #productUnit.product-unit-select:focus {
@@ -3439,6 +3437,11 @@ body > .invoice-jalali-calendar {
 #productForm .field input {
   border-radius: 10px;
 }
+#productModal .modal-card {
+  /* جلوگیری از گیر کردن dropdown واحد روی بعضی WebViewها */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 
 /* ——— تنظیمات هشدار سررسید / پیامک ——— */
@@ -3447,11 +3450,12 @@ body > .invoice-jalali-calendar {
   text-align: right;
 }
 .due-check-row {
+  /* ترتیب بصری: اول مربع، بعد متن فارسی */
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 100%;
   margin: 0 0 10px;
   padding: 10px 12px;
@@ -3460,12 +3464,21 @@ body > .invoice-jalali-calendar {
   background: var(--card);
   color: var(--text);
   cursor: pointer;
-  text-align: right;
   direction: rtl;
+  text-align: right;
 }
 .due-check-row:hover {
   border-color: var(--primary);
   background: linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%);
+}
+.due-check-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0 0 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  order: 0;
 }
 .due-check-text {
   flex: 1 1 auto;
@@ -3474,14 +3487,7 @@ body > .invoice-jalali-calendar {
   line-height: 1.45;
   text-align: right;
   color: var(--text);
-}
-.due-check-row input[type="checkbox"] {
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  accent-color: var(--primary);
-  cursor: pointer;
+  order: 1;
 }
 .due-time-input {
   width: 100%;
@@ -3569,4 +3575,77 @@ body > .invoice-jalali-calendar {
 }
 .settings-inner-card {
   box-shadow: none !important;
+}
+
+
+/* compact settlement v2 */
+.settlement-stage-card {
+  padding: 10px 12px !important;
+  margin: 8px 0 !important;
+  border-radius: 12px !important;
+  gap: 8px !important;
+}
+.settlement-stage-top {
+  gap: 8px !important;
+  align-items: end !important;
+}
+.settlement-method-label {
+  margin-bottom: 4px !important;
+  font-size: 0.82rem !important;
+}
+.settlement-method-chips {
+  gap: 6px !important;
+  padding: 4px !important;
+  border-radius: 10px !important;
+}
+.settlement-method-chip {
+  padding: 7px 10px !important;
+  min-height: 36px !important;
+  font-size: 0.86rem !important;
+  border-radius: 8px !important;
+}
+.settlement-amount-field {
+  min-width: 0 !important;
+  width: 100%;
+}
+.settlement-amount-field input,
+input[data-settle-amount],
+input[data-pay-amount] {
+  min-height: 40px !important;
+  padding: 8px 10px !important;
+  font-size: 0.95rem !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  direction: ltr !important;
+  text-align: right !important;
+  unicode-bidi: plaintext;
+  overflow-x: auto !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.settlement-cheque-fields {
+  margin-top: 8px !important;
+  padding: 10px !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+}
+.settlement-cheque-fields .field {
+  margin: 0 !important;
+}
+.settlement-cheque-fields .field input {
+  min-height: 38px !important;
+  padding: 7px 10px !important;
+}
+.settlement-remove-btn {
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+}
+.settlement-totals-grid div {
+  padding: 8px 10px !important;
+}
+.settlement-field-box {
+  margin: 0 !important;
 }
