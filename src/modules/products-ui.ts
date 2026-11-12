@@ -52,10 +52,10 @@ function ensureModal(): HTMLElement {
         <label class="field"><span>نام *</span><input id="productName" required autocomplete="off" /></label>
         <label class="field"><span>بارکد</span><input id="productCode" direction="ltr" style="direction:ltr;text-align:left" autocomplete="off" /></label>
         <label class="field"><span>کد کالا (SKU)</span><input id="productSku" style="direction:ltr;text-align:left" autocomplete="off" /></label>
-        <div style="display:flex;gap:8px">
+        <div class="product-unit-row">
           <label class="field" style="flex:1"><span>موجودی سیستم</span><input id="productSystemQty" type="number" step="any" value="0" /></label>
-          <label class="field" style="flex:1"><span>واحد پایه</span>
-            <select id="productUnit">
+          <label class="field product-unit-field" style="flex:1"><span>واحد پایه</span>
+            <select id="productUnit" class="product-unit-select">
               <option value="عدد">عدد</option>
               <option value="کیلوگرم">کیلوگرم</option>
               <option value="گرم">گرم</option>
@@ -73,8 +73,9 @@ function ensureModal(): HTMLElement {
               <option value="بسته">بسته</option>
               <option value="کارتن">کارتن</option>
               <option value="جعبه">جعبه</option>
-              <option value="گونی">گونی</option>
-              <option value="پالت">پالت</option>
+              <option value="گالن">گالن</option>
+              <option value="بشکه">بشکه</option>
+              <option value="سایر">سایر</option>
             </select>
           </label>
         </div>

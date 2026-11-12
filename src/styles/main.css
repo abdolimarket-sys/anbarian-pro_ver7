@@ -3397,3 +3397,176 @@ body > .invoice-jalali-calendar {
     min-width:620px;
   }
 }
+
+
+/* ——— فرم کالا: واحد پایه ——— */
+.product-unit-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.product-unit-field span {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+.product-unit-select,
+#productUnit.product-unit-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+  appearance: none;
+  background-image:
+    linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2308734f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: 0 0, left 12px center;
+  background-size: 100% 100%, 12px 8px;
+  padding-left: 28px;
+}
+.product-unit-select:focus,
+#productUnit.product-unit-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(8, 115, 79, 0.18);
+}
+#productModal .field input,
+#productForm .field input {
+  border-radius: 10px;
+}
+
+
+/* ——— تنظیمات هشدار سررسید / پیامک ——— */
+.due-settings-card {
+  direction: rtl;
+  text-align: right;
+}
+.due-check-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  text-align: right;
+  direction: rtl;
+}
+.due-check-row:hover {
+  border-color: var(--primary);
+  background: linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%);
+}
+.due-check-text {
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  text-align: right;
+  color: var(--text);
+}
+.due-check-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.due-time-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  direction: ltr;
+  text-align: right;
+}
+.due-time-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(8, 115, 79, 0.16);
+}
+
+
+/* ——— تنظیمات جمع‌وجور ——— */
+#page-admin {
+  padding-bottom: 12px;
+}
+#page-admin .settings-category {
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+#page-admin .settings-category > .category-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 800;
+  color: var(--primary-dark);
+  background: linear-gradient(180deg, var(--card) 0%, var(--primary-soft) 160%);
+}
+#page-admin .settings-category > .category-summary::-webkit-details-marker { display: none; }
+#page-admin .settings-category .category-content {
+  padding: 0 12px 12px;
+}
+#page-admin .settings-category:not([open]) .category-content { display: none; }
+.settings-subfold {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  overflow: hidden;
+}
+.settings-subfold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  text-align: right;
+  direction: rtl;
+}
+.settings-subfold-summary::-webkit-details-marker { display: none; }
+.settings-subfold-summary::after {
+  content: "⌄";
+  color: var(--primary);
+  font-weight: 800;
+  transition: transform .15s ease;
+}
+.settings-subfold[open] > .settings-subfold-summary::after {
+  transform: rotate(180deg);
+}
+.settings-subfold-body {
+  padding: 8px 10px 10px;
+}
+.settings-main-card > h2 {
+  margin-bottom: 4px;
+}
+.settings-inner-card {
+  box-shadow: none !important;
+}

@@ -388,7 +388,7 @@ function renderShell() {
         <div class="logo-area">
           <img class="brand-logo" src="./logo.png" alt="لوگوی انبارین" />
           <div class="brand-title"><strong>انبارین</strong>
-          <span class="version">v1.5.18</span>
+          <span class="version">v2.0.0</span>
           <span class="role-badge" id="roleBadge">—</span></div>
         </div>
         <div class="header-stats" id="headerStats"></div>
@@ -567,8 +567,11 @@ function renderShell() {
             <li>شمارش دومرحله‌ای: <code id="doubleInfo">—</code></li>
           </ul>
         </div>
-        <div class="card" style="margin-top:12px">
+        <div class="card settings-main-card" style="margin-top:12px">
           <h2>تنظیمات</h2>
+          <details class="settings-subfold" open>
+            <summary class="settings-subfold-summary">ظاهر، اسکن و نقش</summary>
+            <div class="settings-subfold-body">
           <div class="theme-pref-card" style="margin:10px 0 12px;padding:12px;border:1px solid var(--border);background:var(--primary-soft);border-radius:var(--radius-sm)">
             <h3 style="margin:0 0 6px;font-size:1rem">ظاهر برنامه</h3>
             <p class="hint" style="margin:0 0 8px">روشن، تاریک، یا خودکار مطابق تنظیمات گوشی</p>
@@ -611,7 +614,12 @@ function renderShell() {
             <label class="set-row"><span>نام اپراتور</span><input type="text" id="setOperator" placeholder="نام شما" /></label>
           </div>
 
-          <div class="card" style="margin-top:14px;padding:12px;border:1px solid var(--border);background:var(--primary-soft);border-radius:var(--radius-sm)">
+            </div>
+          </details>
+          <details class="settings-subfold">
+            <summary class="settings-subfold-summary">فروشگاه / شرکت (فاکتور)</summary>
+            <div class="settings-subfold-body">
+          <div class="card settings-inner-card" style="margin-top:8px;padding:12px;border:1px solid var(--border);background:var(--primary-soft);border-radius:var(--radius-sm)">
             <h3 style="margin:0 0 6px;font-size:1rem">فروشگاه / شرکت (فاکتور)</h3>
             <p class="hint" style="margin:0 0 10px">این اطلاعات روی فاکتور چاپ و اشتراک نمایش داده می‌شود.</p>
             <div class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
@@ -645,7 +653,12 @@ function renderShell() {
           </div>
 
 
-          <div class="card auto-backup-card" style="margin-top:14px;padding:12px;border:1px solid var(--border);background:var(--primary-soft);border-radius:var(--radius-sm)">
+            </div>
+          </details>
+          <details class="settings-subfold">
+            <summary class="settings-subfold-summary">پشتیبان خودکار و آنلاین</summary>
+            <div class="settings-subfold-body">
+          <div class="card auto-backup-card settings-inner-card" style="margin-top:8px;padding:12px;border:1px solid var(--border);background:var(--primary-soft);border-radius:var(--radius-sm)">
             <h3 style="margin:0 0 6px;font-size:1rem">پشتیبان خودکار و آنلاین</h3>
             <p class="hint" style="margin:0 0 8px"><b>Google Drive:</b> روی «ورود Google Drive» بزنید. اگر ورود مستقیم حساب ممکن باشد بدون انتخاب پوشه وصل می‌شود؛ در غیر این صورت یک‌بار پوشه Drive را انتخاب می‌کنید و بعدش خودکار ادامه می‌یابد. بدون اتصال، پشتیبان محلی فعال است.</p>
             <p class="hint auto-backup-status" id="autoBackupLocationLabel" style="margin:0 0 10px">وضعیت: —</p>
@@ -659,27 +672,32 @@ function renderShell() {
           </div>
 
           
-          <div class="card" style="margin-top:12px;padding:12px;border:1px solid var(--border,#dceee0);border-radius:12px;background:var(--bg2,#f7fbf8)">
-            <h3 style="margin:0 0 8px;font-size:1rem">هشدار سررسید</h3>
-            <label class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            </div>
+          </details>
+          <details class="settings-subfold">
+            <summary class="settings-subfold-summary">هشدار سررسید و پیامک</summary>
+            <div class="settings-subfold-body">
+          <div class="card due-settings-card settings-inner-card" style="margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--primary-soft)">
+            <h3 style="margin:0 0 8px;font-size:1rem;color:var(--primary-dark);text-align:right">هشدار سررسید</h3>
+            <label class="due-check-row" for="setDueReminderEnabled">
+              <span class="due-check-text">نمایش هشدار اسناد سررسیدشده هنگام ورود به برنامه</span>
               <input type="checkbox" id="setDueReminderEnabled" />
-              <span>نمایش هشدار اسناد سررسیدشده هنگام ورود به برنامه</span>
             </label>
-            <p class="hint" style="margin:0 0 12px">هشدار فقط با فعال‌سازی این گزینه نمایش داده می‌شود و برای جلوگیری از تکرار، در هر روز فقط یک‌بار نشان داده خواهد شد.</p>
-            <label class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <p class="hint" style="margin:0 0 12px;text-align:right">هشدار فقط با فعال‌سازی این گزینه نمایش داده می‌شود و برای جلوگیری از تکرار، در هر روز فقط یک‌بار نشان داده خواهد شد.</p>
+            <label class="due-check-row" for="setDueNotificationEnabled">
+              <span class="due-check-text">اعلان بومی اندروید برای سررسید اسناد</span>
               <input type="checkbox" id="setDueNotificationEnabled" />
-              <span>اعلان بومی اندروید برای سررسید اسناد</span>
             </label>
-            <label class="field" style="display:block;margin-bottom:12px">
-              <span style="font-size:.82rem;font-weight:700;color:var(--text-soft)">ساعت اعلان روز سررسید</span>
-              <input type="time" id="setDueNotificationTime" value="09:00" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)" />
-              <span class="hint" style="font-size:.75rem">اعلان حتی در صورت بسته بودن برنامه، توسط اندروید نمایش داده می‌شود. در نسخه وب فقط هشدار هنگام ورود فعال است.</span>
+            <label class="field due-time-field" style="display:block;margin-bottom:12px;text-align:right">
+              <span style="font-size:.82rem;font-weight:700;color:var(--primary-dark)">ساعت اعلان روز سررسید</span>
+              <input type="time" id="setDueNotificationTime" value="09:00" class="due-time-input" />
+              <span class="hint" style="font-size:.75rem;display:block;margin-top:4px">اعلان حتی در صورت بسته بودن برنامه، توسط اندروید نمایش داده می‌شود. در نسخه وب فقط هشدار هنگام ورود فعال است.</span>
             </label>
-            <h3 style="margin:0 0 8px;font-size:1rem">ارسال پیامک</h3>
-            <p class="hint" style="margin:0 0 10px">اختیاری است. حالت «پیامک گوشی» بدون API کار می‌کند. برای ارسال خودکار: کاوه‌نگار، فراز اس‌ام‌اس، ملی‌پیامک یا آدرس سفارشی.</p>
-            <label class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <h3 style="margin:0 0 8px;font-size:1rem;color:var(--primary-dark);text-align:right">ارسال پیامک</h3>
+            <p class="hint" style="margin:0 0 10px;text-align:right">اختیاری است. حالت «پیامک گوشی» بدون API کار می‌کند. برای ارسال خودکار: کاوه‌نگار، فراز اس‌ام‌اس، ملی‌پیامک یا آدرس سفارشی.</p>
+            <label class="due-check-row" for="setSmsEnabled">
+              <span class="due-check-text">فعال‌سازی ارسال پیامک</span>
               <input type="checkbox" id="setSmsEnabled" />
-              <span>فعال‌سازی ارسال پیامک</span>
             </label>
             <label class="field" style="display:block;margin-bottom:8px">
               <span style="font-size:.82rem;font-weight:700;color:var(--text-soft)">روش ارسال</span>
@@ -723,6 +741,9 @@ function renderShell() {
             </label>
             <button type="button" class="btn btn-secondary btn-sm" id="btnSmsTest">ارسال پیامک آزمایشی</button>
           </div>
+
+            </div>
+          </details>
 
           <button class="btn btn-primary btn-block" id="btnSaveSettings" style="margin-top:12px">💾 ذخیره تنظیمات</button>
           <div class="actions" style="margin-top:12px">
@@ -904,6 +925,7 @@ function compactAdminSections(): void {
     const title = heading.textContent?.trim() || 'بخش تنظیمات';
     const details = document.createElement('details');
     details.className = 'settings-category';
+    // فقط وضعیت سیستم باز؛ بقیه جمع تا صفحه کوتاه‌تر باشد
     details.open = index === 0;
     const summary = document.createElement('summary');
     summary.className = 'category-summary';
