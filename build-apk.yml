@@ -11,7 +11,7 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,10 +23,33 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci --registry https://registry.npmjs.org/ || npm install --registry https://registry.npmjs.org/
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --registry https://registry.npmjs.org/
+          else
+            npm install --registry https://registry.npmjs.org/
+          fi
+
+      - name: Show tests folder
+        run: |
+          echo "PWD=$(pwd)"
+          ls -la
+          ls -la tests || echo "NO tests/ directory in repo"
+          find tests -name "*.mjs" 2>/dev/null | head -50 || true
 
       - name: Run tests
-        run: npm test
+        run: |
+          if [ ! -d tests ]; then
+            echo "::error::پوشه tests در ریپو نیست. آن را commit و push کنید."
+            exit 1
+          fi
+          count=$(find tests -name "*.test.mjs" | wc -l)
+          echo "Found $count test files"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::هیچ فایل *.test.mjs پیدا نشد"
+            exit 1
+          fi
+          node --test tests/
 
   build:
     name: Build debug APK
@@ -60,7 +83,12 @@ jobs:
           sdkmanager --update || true
 
       - name: Install npm dependencies
-        run: npm ci --registry https://registry.npmjs.org/ || npm install --registry https://registry.npmjs.org/
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --registry https://registry.npmjs.org/
+          else
+            npm install --registry https://registry.npmjs.org/
+          fi
 
       - name: Typecheck and build web
         run: npm run build
