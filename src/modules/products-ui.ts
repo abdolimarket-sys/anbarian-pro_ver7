@@ -89,19 +89,23 @@ function ensureModal(): HTMLElement {
         <p class="hint" id="productPriceHint" style="margin:4px 0 8px">قیمت خرید برای بهای تمام‌شده است؛ قیمت فروش پس از تخفیف نسبت به مصرف‌کننده در فاکتور فروش استفاده می‌شود. اگر بهای استاندارد بیشتر از صفر باشد، در خرید موجودی با استاندارد ثبت و انحراف قیمت جداگانه شناسایی می‌شود.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <label class="field" style="flex:1;min-width:120px"><span>ضریب واحد</span><input id="productUnitFactor" type="number" step="any" min="0" value="1" title="تعداد واحد پایه در هر بسته" /></label>
-          <label class="field" style="flex:1;min-width:120px"><span>واحد بسته</span><input id="productPackUnit" list="anbarin-pack-unit-list" placeholder="کارتن / بسته / جعبه..." title="نام واحد بسته‌بندی برای تبدیل در فاکتور" autocomplete="off" /></label>
+          <label class="field product-unit-field" style="flex:1;min-width:120px"><span>واحد بسته</span>
+            <select id="productPackUnit" class="product-unit-select" title="نام واحد بسته‌بندی برای تبدیل در فاکتور">
+              <option value="">— بدون واحد بسته —</option>
+              <option value="کارتن">کارتن</option>
+              <option value="بسته">بسته</option>
+              <option value="جعبه">جعبه</option>
+              <option value="گونی">گونی</option>
+              <option value="پالت">پالت</option>
+              <option value="رول">رول</option>
+              <option value="قوطی">قوطی</option>
+              <option value="دسته">دسته</option>
+              <option value="جین">جین</option>
+              <option value="شانه">شانه</option>
+              <option value="کیسه">کیسه</option>
+            </select>
+          </label>
         </div>
-        <datalist id="anbarin-pack-unit-list">
-          <option value="کارتن"></option>
-          <option value="بسته"></option>
-          <option value="جعبه"></option>
-          <option value="گونی"></option>
-          <option value="پالت"></option>
-          <option value="رول"></option>
-          <option value="قوطی"></option>
-          <option value="دسته"></option>
-          <option value="جین"></option>
-        </datalist>
         <p class="hint" style="margin:0 0 8px">مثال: واحد پایه «عدد»، واحد بسته «کارتن»، ضریب ۱۲ یعنی هر کارتن = ۱۲ عدد. در فاکتور می‌توان تعداد را بر حسب بسته زد؛ موجودی بر حسب واحد پایه تغییر می‌کند.</p>
         <div style="display:flex;gap:8px">
           <label class="field" style="flex:1"><span>حداقل</span><input id="productMinQty" type="number" step="any" /></label>
@@ -161,6 +165,10 @@ const PRODUCT_BASE_UNITS = [
   'جفت', 'دست', 'شاخه', 'رول', 'قوطی', 'بسته', 'کارتن', 'جعبه', 'گالن', 'بشکه', 'سایر',
 ] as const;
 
+const PRODUCT_PACK_UNITS = [
+  '', 'کارتن', 'بسته', 'جعبه', 'گونی', 'پالت', 'رول', 'قوطی', 'دسته', 'جین', 'شانه', 'کیسه',
+] as const;
+
 function rebuildProductUnitOptions(preferred?: string): void {
   const select = document.getElementById('productUnit') as HTMLSelectElement | null;
   if (!select) return;
@@ -171,12 +179,26 @@ function rebuildProductUnitOptions(preferred?: string): void {
   select.value = values.includes(current) ? current : 'عدد';
 }
 
+function rebuildProductPackUnitOptions(preferred?: string): void {
+  const select = document.getElementById('productPackUnit') as HTMLSelectElement | null;
+  if (!select) return;
+  const current = (preferred ?? select.value ?? '').trim();
+  const values = Array.from(new Set<string>([...PRODUCT_PACK_UNITS, ...(current ? [current] : [])]));
+  select.innerHTML = values.map((u) => {
+    const label = u ? u : '— بدون واحد بسته —';
+    return `<option value="${u.replace(/"/g, '&quot;')}">${label}</option>`;
+  }).join('');
+  select.disabled = false;
+  select.value = values.includes(current) ? current : '';
+}
+
 function ensureProductUnitOption(unit: string): void {
   rebuildProductUnitOptions(unit);
 }
 
 function val(id: string): string {
-  return (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value?.trim() || '';
+  const node = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+  return node?.value?.trim() || '';
 }
 
 function num(id: string): number {
@@ -290,6 +312,7 @@ export function openProductModal(
   });
 
   rebuildProductUnitOptions('عدد');
+  rebuildProductPackUnitOptions('');
   (document.getElementById('productUnitFactor') as HTMLInputElement).value = '1';
   (document.getElementById('productSystemQty') as HTMLInputElement).value = '0';
   (document.getElementById('productPurchasePrice') as HTMLInputElement).value = '0';
@@ -327,7 +350,7 @@ export function openProductModal(
     (document.getElementById('productPrice') as HTMLInputElement).value = String(sell || consumer || 0);
     (document.getElementById('productStandardCost') as HTMLInputElement).value = String(p.standardCostRial ?? 0);
     (document.getElementById('productUnitFactor') as HTMLInputElement).value = String(p.unitFactor ?? 1);
-    (document.getElementById('productPackUnit') as HTMLInputElement).value = p.packUnit || '';
+    rebuildProductPackUnitOptions(p.packUnit || '');
     (document.getElementById('productMinQty') as HTMLInputElement).value =
       p.minQty != null ? String(p.minQty) : '';
     (document.getElementById('productMaxQty') as HTMLInputElement).value =
