@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const read = p => readFileSync(new URL(p, import.meta.url), 'utf8');
+test('native due notification is opt-in and scheduled through Android plugin', () => {
+  const due = read('../src/modules/due-reminders.ts');
+  const storage = read('../src/modules/storage.ts');
+  const main = read('../src/main.ts');
+  const manifest = read('../android/app/src/main/AndroidManifest.xml');
+  assert.match(storage, /dueNotificationEnabled:\s*false/);
+  assert.match(due, /NativeDueNotifications\.schedule/);
+  assert.match(due, /localStorage\.getItem\(marker\) === '1'/);
+  assert.match(main, /setDueNotificationEnabled/);
+  assert.match(manifest, /POST_NOTIFICATIONS/);
+  assert.match(manifest, /BOOT_COMPLETED/);
+});
+test('scheduled SMS requires a dedicated server queue endpoint and does not call immediate sender', () => {
+  const sms = read('../src/modules/sms.ts');
+  const settings = read('../src/modules/session-settings.ts');
+  const main = read('../src/main.ts');
+  assert.match(sms, /export async function scheduleSms/);
+  assert.match(sms, /settings\.smsScheduleUrl/);
+  assert.match(sms, /action:\s*'schedule'/);
+  assert.match(sms, /scheduledAt:\s*when\.toISOString\(\)/);
+  assert.match(sms, /idempotencyKey/);
+  const server = read('../server/wordpress-plugin/anbarin-scheduled-sms/anbarin-scheduled-sms.php');
+  assert.match(server, /wp_schedule_single_event/);
+  assert.match(server, /UNIQUE KEY idempotency_key/);
+  assert.match(settings, /setSmsScheduleUrl/);
+  assert.match(main, /setSmsScheduleUrl/);
+});
