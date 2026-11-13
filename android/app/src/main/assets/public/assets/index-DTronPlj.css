@@ -31,3 +31,97 @@
  #accountingCommerceWorkspace .commerce-invoice-card .commerce-line>label:has([data-line-total]){grid-column:1/span 3;grid-row:3}
  #accountingCommerceWorkspace .commerce-invoice-card .commerce-line>[data-remove-line]{grid-column:4;grid-row:3;width:100%}
 }
+
+
+/* Settlement rows only: keep method choices on the right and amount/actions on the left. */
+.settlement-stage-card .settlement-stage-top {
+  display: grid !important;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) !important;
+  gap: 10px !important;
+  align-items: start !important;
+  direction: rtl;
+  min-width: 0;
+}
+.settlement-stage-card .settlement-method-picker {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+}
+.settlement-stage-card .settlement-payment-controls {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.settlement-stage-card .settlement-amount-field {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.settlement-stage-card .settlement-amount-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px !important;
+  box-sizing: border-box;
+}
+.settlement-stage-card .settlement-remove-btn {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px !important;
+  height: 40px;
+  align-self: end;
+  justify-self: stretch;
+  margin: 0;
+  padding-inline: 6px;
+  white-space: nowrap;
+}
+.settlement-stage-card .settlement-method-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.settlement-stage-card .settlement-method-chip {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+@media (max-width: 640px) {
+  .settlement-stage-card .settlement-stage-top {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) !important;
+    gap: 8px !important;
+  }
+  .settlement-stage-card .settlement-payment-controls {
+    grid-template-columns: minmax(0, 1fr) 68px;
+    gap: 6px;
+  }
+  .settlement-stage-card .settlement-remove-btn {
+    padding-inline: 4px;
+    font-size: 0.82rem;
+  }
+}
+@media (max-width: 360px) {
+  .settlement-stage-card .settlement-stage-top {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) !important;
+    gap: 6px !important;
+  }
+  .settlement-stage-card .settlement-payment-controls {
+    grid-template-columns: minmax(0, 1fr) 60px;
+    gap: 5px;
+  }
+  .settlement-stage-card .settlement-method-chip {
+    padding-inline: 4px !important;
+    font-size: 0.78rem !important;
+  }
+}
