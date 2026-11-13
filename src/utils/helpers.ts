@@ -43,7 +43,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
  * چاپ HTML بدون ترک صفحه فعلی اپ.
  * روی اندروید: NativePrint | روی وب: iframe مخفی.
  * از window.open استفاده نمی‌کند تا بعد از چاپ صفحه خالی نماند.
- * options.paperSize: 'a4' | 'a5' | 'label80' — در صورت ارسال، @page تزریق می‌شود.
+ * options.paperSize: 'a4' | 'a5' | 'pocket58' | 'label80' — در صورت ارسال، @page تزریق می‌شود.
  */
 export function printHtmlSafely(
   html: string,
@@ -51,7 +51,7 @@ export function printHtmlSafely(
   options?: {
     onSuccess?: () => void;
     onError?: (err: unknown) => void;
-    paperSize?: 'a4' | 'a5' | 'label80';
+    paperSize?: 'a4' | 'a5' | 'pocket58' | 'label80';
   }
 ): void {
   const { onSuccess, onError, paperSize } = options || {};
@@ -61,7 +61,8 @@ export function printHtmlSafely(
     // تزریق سبک @page بدون وابستگی دایره‌ای به ماژول چاپ
     const pageMap: Record<string, string> = {
       a4: '@page{size:A4;margin:12mm}',
-      a5: '@page{size:A5;margin:10mm}',
+      a5: '@page{size:A5;margin:8mm}',
+      pocket58: '@page{size:58mm auto;margin:1.5mm}',
       label80: '@page{size:80mm auto;margin:2mm}',
     };
     const pageRule = pageMap[paperSize] || pageMap.a4;

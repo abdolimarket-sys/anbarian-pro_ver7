@@ -3,7 +3,7 @@
  * بدون وابستگی به بقیه ماژول‌ها؛ فقط CSS و دیالوگ انتخاب.
  */
 
-export type PaperSizeId = 'a4' | 'a5' | 'label80';
+export type PaperSizeId = 'a4' | 'a5' | 'pocket58' | 'label80';
 
 export type PaperSizeDef = {
   id: PaperSizeId;
@@ -29,7 +29,7 @@ export const PAPER_SIZES: Record<PaperSizeId, PaperSizeDef> = {
   a4: {
     id: 'a4',
     label: 'A4',
-    hint: '۲۱۰×۲۹۷ میلی‌متر — گزارش و فاکتور استاندارد',
+    hint: '۲۱۰×۲۹۷ میلی‌متر — فاکتور رسمی و کامل، چیدمان استاندارد',
     pageSize: 'A4',
     margin: '12mm',
     labelCardWidth: '62mm',
@@ -40,7 +40,7 @@ export const PAPER_SIZES: Record<PaperSizeId, PaperSizeDef> = {
   a5: {
     id: 'a5',
     label: 'A5',
-    hint: '۱۴۸×۲۱۰ میلی‌متر — فاکتور فشرده',
+    hint: '۱۴۸×۲۱۰ میلی‌متر — فاکتور جمع‌وجور با فونت و جدول فشرده',
     pageSize: 'A5',
     margin: '10mm',
     labelCardWidth: '58mm',
@@ -48,10 +48,21 @@ export const PAPER_SIZES: Record<PaperSizeId, PaperSizeDef> = {
     forDocument: true,
     forLabel: true,
   },
+  pocket58: {
+    id: 'pocket58',
+    label: 'پرینتر جیبی (۵۸mm)',
+    hint: 'عرض ۵۸ میلی‌متر — رول حرارتی جیبی و فاکتور رسیدی',
+    pageSize: '58mm auto',
+    margin: '1.5mm',
+    labelCardWidth: '50mm',
+    labelsPerRow: 1,
+    forDocument: true,
+    forLabel: false,
+  },
   label80: {
     id: 'label80',
     label: '۸ سانتی‌متر (۸۰mm)',
-    hint: 'عرض ۸۰ میلی‌متر — پرینتر حرارتی (لیبل و فاکتور فشرده)',
+    hint: 'عرض ۸۰ میلی‌متر — رول حرارتی فروشگاهی و فاکتور خوانا',
     pageSize: '80mm auto',
     margin: '2mm',
     labelCardWidth: '72mm',

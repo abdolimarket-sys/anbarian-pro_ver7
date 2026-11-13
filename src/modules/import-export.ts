@@ -287,18 +287,18 @@ export function exportCSV(onlyDiff = false): void {
 
 // ——— JSON backup ———
 
-function backupChecksum(value: unknown): string {
-  const text = JSON.stringify(value);
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
-  return (hash >>> 0).toString(16).padStart(8, '0');
+async function backupChecksum(value: unknown): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error('SHA-256 is not available');
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function exportJSON(): void {
+export async function exportJSON(): Promise<void> {
   if (!guardPermission('inventory.export', 'پشتیبان JSON')) return;
   const body = {
     type: 'anbar-backup',
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     warehouse: settings.currentWarehouse,
     products,
@@ -308,8 +308,15 @@ export function exportJSON(): void {
     recentScans,
     inventoryDocs,
   };
-  const payload = { ...body, checksum: backupChecksum(body) };
-  downloadFile(JSON.stringify(payload, null, 2), `anbar-backup-${dateStr()}.json`, 'application/json');
+  let checksum: string;
+  try { checksum = await backupChecksum(body); }
+  catch {
+    toast('امکان تولید امضای امن SHA-256 وجود ندارد؛ پشتیبان ساخته نشد', 'error');
+    return;
+  }
+  const payload = { ...body, checksumAlgorithm: 'SHA-256', checksum };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  downloadFile(JSON.stringify(payload, null, 2), `anbar-backup-${stamp}.json`, 'application/json');
   toast('پشتیبان کامل آماده ذخیره است', 'success');
   logAudit('export_json', { count: products.length, version: 4 });
 }
@@ -328,12 +335,23 @@ export async function importJSONFile(file: File): Promise<ImportResult | null> {
     return null;
   }
   if (data.version >= 4 && typeof data.checksum !== 'string') {
-    toast('فایل پشتیبان نسخه ۴ فاقد checksum است', 'error');
+    toast('فایل پشتیبان فاقد checksum است', 'error');
     return null;
   }
   if (data.checksum) {
-    const { checksum, ...body } = data;
-    if (typeof checksum !== 'string' || checksum !== backupChecksum(body)) {
+    const { checksum, checksumAlgorithm, ...body } = data;
+    let valid = false;
+    try {
+      if (checksumAlgorithm === 'SHA-256') valid = checksum === await backupChecksum(body);
+      else if (data.version < 5) {
+        // سازگاری با فایل‌های نسخه ۴ که از checksum قدیمی استفاده می‌کردند
+        let hash = 0x811c9dc5;
+        const raw = JSON.stringify(body);
+        for (let i = 0; i < raw.length; i++) { hash ^= raw.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
+        valid = checksum === (hash >>> 0).toString(16).padStart(8, '0');
+      }
+    } catch { valid = false; }
+    if (!valid) {
       toast('صحت فایل پشتیبان تأیید نشد؛ فایل تغییر کرده یا خراب است', 'error');
       return null;
     }
@@ -342,6 +360,24 @@ export async function importJSONFile(file: File): Promise<ImportResult | null> {
   if (!mode) return null;
 
   if (mode === 'replace') {
+    // نسخه اضطراری پیش از جایگزینی؛ در صورت خطای بازیابی امکان بازگشت باقی بماند.
+    try {
+      const { idbPut } = await import('./storage');
+      await idbPut('emergency_before_import_restore', {
+        schema: 'anbarin-emergency-snapshot',
+        savedAt: new Date().toISOString(),
+        products: [...products],
+        settings: { ...settings },
+        session,
+        auditLog: [...auditLog],
+        recentScans: [...recentScans],
+        inventoryDocs: [...inventoryDocs],
+      });
+    } catch (e) {
+      toast('تهیه نسخه اضطراری ممکن نشد؛ بازیابی لغو شد', 'error');
+      console.error('[Anbarin] emergency snapshot failed', e);
+      return null;
+    }
     products.length = 0;
     products.push(...data.products);
     if (Array.isArray(data.inventoryDocs)) {
@@ -558,9 +594,27 @@ function importIdentity(row: ImportRow): string {
   return code ? `b:${code}` : sku ? `s:${sku}` : name ? `n:${name}` : '';
 }
 
-export function applyImportRows(rows: ImportRow[], mode: ImportMode): ImportResult {
+export async function applyImportRows(rows: ImportRow[], mode: ImportMode): Promise<ImportResult | null> {
   if (!guardPermission('inventory.import', 'ورود اطلاعات')) return { added: 0, updated: 0, skipped: rows.length, total: rows.length };
   if (mode === 'replace') {
+    // نسخه اضطراری پیش از جایگزینی؛ در صورت خطای بازیابی امکان بازگشت باقی بماند.
+    try {
+      const { idbPut } = await import('./storage');
+      await idbPut('emergency_before_import_restore', {
+        schema: 'anbarin-emergency-snapshot',
+        savedAt: new Date().toISOString(),
+        products: [...products],
+        settings: { ...settings },
+        session,
+        auditLog: [...auditLog],
+        recentScans: [...recentScans],
+        inventoryDocs: [...inventoryDocs],
+      });
+    } catch (e) {
+      toast('تهیه نسخه اضطراری ممکن نشد؛ بازیابی لغو شد', 'error');
+      console.error('[Anbarin] emergency snapshot failed', e);
+      return null;
+    }
     products.length = 0;
   }
 

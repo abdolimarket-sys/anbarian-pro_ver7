@@ -1053,7 +1053,7 @@ tbody tr:nth-child(even){background:#f8fafc}
 .actions button.primary{background:#0f766e;color:#fff;border-color:#0f766e}
 @media print{body{margin:8mm}.sheet{border:none;border-radius:0}.noprint{display:none!important}}
 @media(max-width:640px){.head,.meta-bar,.sign{grid-template-columns:1fr}.brand{flex-direction:column;align-items:flex-start}}
-</style></head><body>
+</style></head><body class="invoice-print">
 <div class="sheet">
   <div class="brand">
     <div class="brand-main">${logoHtml}<div><h1>${esc(biz.name)}</h1>${biz.slogan?`<div class="slogan">${esc(biz.slogan)}</div>`:''}</div></div>
@@ -1121,8 +1121,43 @@ ${internal?`<div style="background:#fff3cd;border:1px solid #f0c36d;padding:8px 
   return {title,html,text:textLines.filter(Boolean).join('\n')};
 }
 
-/** فاکتور فشرده مخصوص رول ۸۰mm / ۸ سانتی‌متر */
-function buildInvoiceHtml80(invoiceId:string):{title:string;html:string;text:string}|null {
+/** تنظیم دقیق قالب فاکتور برای کاغذهای برگه‌ای؛ فقط روی سند چاپ فاکتور اثر دارد. */
+function applyInvoicePaperLayout(html:string,size:'a4'|'a5'):string {
+  const a5=size==='a5';
+  const css=`
+@media print {
+  html,body { margin:0!important; padding:0!important; width:auto!important; background:#fff!important; }
+  body.invoice-print { font-size:${a5?'9':'10'}pt!important; line-height:${a5?'1.35':'1.42'}!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body.invoice-print .sheet { width:100%!important; max-width:none!important; margin:0!important; border:0!important; border-radius:0!important; overflow:visible!important; }
+  body.invoice-print .brand { padding:${a5?'4mm 5mm':'6mm 7mm'}!important; break-inside:avoid; }
+  body.invoice-print .brand h1 { font-size:${a5?'14':'17'}pt!important; }
+  body.invoice-print .brand-meta { padding:${a5?'2mm 5mm':'3mm 7mm'}!important; font-size:${a5?'7.5':'8.5'}pt!important; }
+  body.invoice-print .body { padding:${a5?'4mm 5mm':'6mm 7mm'}!important; }
+  body.invoice-print .head { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:${a5?'2mm':'3mm'}!important; }
+  body.invoice-print .panel { min-width:0; min-height:0!important; padding:${a5?'2mm':'3mm'}!important; break-inside:avoid; }
+  body.invoice-print .panel .row { font-size:${a5?'7.2':'8.5'}pt!important; gap:3px!important; }
+  body.invoice-print .panel .party-name { font-size:${a5?'8.5':'10'}pt!important; }
+  body.invoice-print .panel .addr { font-size:${a5?'7':'8'}pt!important; }
+  body.invoice-print .meta-bar { grid-template-columns:${a5?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))'}!important; gap:2mm!important; }
+  body.invoice-print .meta-bar div { min-width:0; padding:${a5?'1.5mm 2mm':'2mm 2.5mm'}!important; }
+  body.invoice-print .meta-bar b { font-size:${a5?'8':'9'}pt!important; overflow-wrap:anywhere; }
+  body.invoice-print table { width:100%!important; table-layout:fixed!important; border-collapse:collapse!important; font-size:${a5?'6.8':'8'}pt!important; }
+  body.invoice-print th,body.invoice-print td { padding:${a5?'1mm .8mm':'1.5mm 1.2mm'}!important; overflow-wrap:anywhere!important; word-break:break-word!important; }
+  body.invoice-print th { font-size:${a5?'6.5':'7.5'}pt!important; }
+  body.invoice-print tbody tr { break-inside:avoid; page-break-inside:avoid; }
+  body.invoice-print .sum { max-width:${a5?'78mm':'95mm'}!important; font-size:${a5?'8':'9'}pt!important; break-inside:avoid; }
+  body.invoice-print .sum div { padding:${a5?'1.5mm 2mm':'2mm 2.5mm'}!important; }
+  body.invoice-print .note { font-size:${a5?'7.5':'8.5'}pt!important; }
+  body.invoice-print .sign { grid-template-columns:1fr 1fr!important; gap:${a5?'8mm':'18mm'}!important; margin-top:${a5?'12mm':'18mm'}!important; }
+  body.invoice-print .footer { margin-top:5mm!important; }
+  body.invoice-print .noprint { display:none!important; }
+}
+`;
+  return html.replace(/<\/head>/i,`<style id="anbarin-invoice-paper-layout">${css}</style></head>`);
+}
+
+/** فاکتور رسیدی فشرده برای رول‌های حرارتی جیبی ۵۸mm و فروشگاهی ۸۰mm */
+function buildInvoiceHtmlThermal(invoiceId:string,widthMm:58|80):{title:string;html:string;text:string}|null {
   const invoice=commerce?.invoices.find(i=>i.id===invoiceId); if(!invoice||!commerce)return null;
   const party=commerce.parties.find(p=>p.id===invoice.partyId); if(!party)return null;
   const biz=businessProfile();
@@ -1141,30 +1176,32 @@ function buildInvoiceHtml80(invoiceId:string):{title:string;html:string;text:str
   }).join('');
   const logoHtml=biz.logo?`<img src="${biz.logo.replace(/"/g,'')}" alt="" style="max-height:28px;max-width:60px;display:block;margin:0 auto 4px" />`:'';
   const html=`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
-@page{size:80mm auto;margin:2mm}
+@page{size:${widthMm}mm auto;margin:${widthMm===58?'1.5':'2'}mm}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Tahoma,Arial,sans-serif;direction:rtl}
-body{width:76mm;max-width:76mm;padding:2mm;font-size:11px;line-height:1.45}
-h1{font-size:13px;text-align:center;margin:0 0 2px;font-weight:800}
-.sub{text-align:center;font-size:10px;margin:0 0 3px;color:#333}
+body{width:${widthMm-4}mm;max-width:${widthMm-4}mm;padding:${widthMm===58?'1.5':'2'}mm;font-size:${widthMm===58?'9.2':'11'}px;line-height:1.42}
+h1{font-size:${widthMm===58?'11':'13'}px;text-align:center;margin:0 0 2px;font-weight:800}
+.sub{text-align:center;font-size:${widthMm===58?'8.5':'10'}px;margin:0 0 3px;color:#333}
 .hr{border:0;border-top:1px dashed #000;margin:5px 0}
+h1,.sub,.party-box,.item-top,.muted{overflow-wrap:anywhere;word-break:break-word}
 .meta div{display:flex;justify-content:space-between;gap:4px;margin:2px 0}
 .meta b{font-weight:700}
 .party-box{padding:4px 0}
 .party-title{font-size:10px;font-weight:800;margin-bottom:2px}
 .item{margin:5px 0;padding-bottom:4px;border-bottom:1px dotted #999}
 .item-top{margin-bottom:2px}
-.item-row{display:flex;justify-content:space-between;gap:6px;font-size:10px}
+.item-row{display:flex;justify-content:space-between;gap:4px;font-size:${widthMm===58?'8.5':'10'}px;overflow-wrap:anywhere}
 .item-row.total-line{margin-top:2px}
 .muted{color:#444}
 .sum{margin-top:6px}
-.sum .item-row{font-size:11px;margin:3px 0}
-.sum .grand{font-size:13px;font-weight:800;border-top:1px solid #000;padding-top:4px;margin-top:4px}
-.foot{text-align:center;font-size:9px;margin-top:8px;color:#333}
+.sum .item-row{font-size:${widthMm===58?'9.2':'11'}px;margin:3px 0}
+.sum .grand{font-size:${widthMm===58?'11':'13'}px;font-weight:800;border-top:1px solid #000;padding-top:4px;margin-top:4px}
+.foot{text-align:center;font-size:${widthMm===58?'7.5':'9'}px;margin-top:8px;color:#333}
+@media print{html,body{width:${widthMm-4}mm!important;max-width:${widthMm-4}mm!important;margin:0!important}.item,.party-box,.sum{break-inside:avoid;page-break-inside:avoid}}
 </style></head><body>
 ${logoHtml}
 <h1>${esc(biz.name)}</h1>
-<div class="sub">فاکتور ${esc(invoiceTypeTitle(invoice.type))}</div>
+<div class="sub">فاکتور ${esc(invoiceTypeTitle(invoice.type))} · ${widthMm}mm</div>
 ${biz.slogan?`<div class="sub">${esc(biz.slogan)}</div>`:''}
 ${biz.phone?`<div class="sub">☎ ${esc(biz.phone)}</div>`:''}
 ${biz.address?`<div class="sub">${esc(biz.address)}</div>`:''}
@@ -1218,12 +1255,14 @@ function resolveInvoiceForPrint():string|null{
 async function printInvoice(invoiceId:string, opts?:{internal?:boolean}):Promise<void> {
   const size=await choosePaperSize({mode:'document',title:opts?.internal?'سایز چاپ داخلی':'سایز چاپ فاکتور'});
   if(!size)return;
-  // رول ۸۰mm همیشه نسخه مشتری (بدون سود)
-  const doc=size==='label80'?buildInvoiceHtml80(invoiceId):buildInvoiceHtml(invoiceId,{internal:!!opts?.internal});
+  // رول‌های حرارتی ۵۸ و ۸۰mm همیشه نسخه مشتری (بدون سود)
+  const thermal=size==='label80'||size==='pocket58';
+  const doc=thermal?buildInvoiceHtmlThermal(invoiceId,size==='pocket58'?58:80):buildInvoiceHtml(invoiceId,{internal:!!opts?.internal});
   if(!doc){toast('فاکتور برای چاپ پیدا نشد.','error');return;}
-  printHtmlSafely(doc.html, doc.title || `فاکتور-${invoiceId}`, {
+  const printHtml=thermal?doc.html:applyInvoicePaperLayout(doc.html,size);
+  printHtmlSafely(printHtml, doc.title || `فاکتور-${invoiceId}`, {
     paperSize: size,
-    onSuccess: () => toast(opts?.internal?'چاپ داخلی (با سود) آماده شد':(size==='label80'?'چاپ فاکتور فشرده ۸۰mm آماده شد':'پنجره چاپ باز شد؛ پس از اتمام به همین صفحه برمی‌گردید'), 'success'),
+    onSuccess: () => toast(opts?.internal?'چاپ داخلی (با سود) آماده شد':(thermal?`چاپ فاکتور ${size==='pocket58'?'جیبی ۵۸mm':'۸۰mm'} آماده شد`:'پنجره چاپ باز شد؛ پس از اتمام به همین صفحه برمی‌گردید'), 'success'),
     onError: () => toast('باز کردن چاپ ناموفق بود؛ دوباره تلاش کنید', 'error'),
   });
 }

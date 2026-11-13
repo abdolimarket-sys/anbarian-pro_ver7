@@ -14,7 +14,7 @@ import {
 import { toast, showPage, loadTheme, bindThemeControls } from './modules/ui';
 import { findProductByCode } from './modules/state';
 import { initLocalAuth } from './modules/local-auth';
-import { initExternalAutoBackupScheduler, tryRecoverFromExternalBackup, getAutoBackupLocationStatus, pickAutoBackupFolder, clearAutoBackupFolder, writeExternalAutoBackup, getGoogleDriveAccountStatus, connectGoogleDriveAccount, disconnectGoogleDriveAccount } from './modules/device-auto-backup';
+import { initExternalAutoBackupScheduler, tryRecoverFromExternalBackup, getAutoBackupLocationStatus, pickAutoBackupFolder, clearAutoBackupFolder, writeExternalAutoBackup, getGoogleDriveAccountStatus, connectGoogleDriveAccount, disconnectGoogleDriveAccount, listExternalBackups, restoreSelectedExternalBackup, getAutoBackupReport } from './modules/device-auto-backup';
 import { initAccountingUI } from './modules/accounting-ui';
 import { initAccountingCommerceUI } from './modules/accounting-commerce-ui';
 import { initAccountingReportsUI } from './modules/accounting-reports';
@@ -669,6 +669,16 @@ function renderShell() {
               <button type="button" class="btn btn-sm auto-backup-btn" id="btnResetAutoBackupFolder" data-backup-role="local-default">پیش‌فرض محلی</button>
               <button type="button" class="btn btn-sm auto-backup-btn auto-backup-btn-run" id="btnRunAutoBackupNow" data-backup-role="run-now">پشتیبان همین حالا</button>
             </div>
+            <div class="backup-manager" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                <strong>مدیریت نسخه‌های پشتیبان</strong>
+                <button type="button" class="btn btn-sm btn-secondary" id="btnRefreshBackupList">به‌روزرسانی فهرست</button>
+              </div>
+              <p class="hint" id="backupHealthReport" role="status" aria-live="polite" style="margin:6px 0">گزارش آخرین پشتیبان: —</p>
+              <div id="externalBackupList" style="display:grid;gap:8px;margin-top:8px">
+                <p class="hint">برای مشاهده نسخه‌ها، فهرست را به‌روزرسانی کنید.</p>
+              </div>
+            </div>
           </div>
 
           
@@ -1042,6 +1052,59 @@ function bindEvents() {
     toast(ok ? 'پشتیبان خودکار ذخیره شد' : 'پشتیبان نوشته نشد (داده خالی یا فقط وب)', ok ? 'success' : 'info');
     void refreshBackupLoc();
   });
+
+  const refreshBackupManager = async () => {
+    const listEl = document.getElementById('externalBackupList');
+    const reportEl = document.getElementById('backupHealthReport');
+    if (!listEl) return;
+    listEl.textContent = 'در حال دریافت فهرست نسخه‌ها…';
+    const report = getAutoBackupReport();
+    if (reportEl) {
+      const last = report.lastSuccessAt ? new Date(report.lastSuccessAt).toLocaleString('fa-IR') : 'ثبت نشده';
+      reportEl.textContent = `آخرین پشتیبان موفق: ${last}${report.lastError ? ` · آخرین خطا: ${report.lastError}` : ''}`;
+    }
+    const backups = await listExternalBackups();
+    listEl.replaceChildren();
+    if (!backups.length) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'نسخه‌ای در حافظه دستگاه یا Google Drive پیدا نشد. این فهرست در نسخه وب در دسترس نیست.';
+      listEl.appendChild(empty);
+      return;
+    }
+    backups.forEach((item) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px;border:1px solid var(--border);border-radius:10px;background:var(--bg)';
+      const info = document.createElement('div');
+      info.style.cssText = 'min-width:0;flex:1';
+      const name = document.createElement('strong');
+      name.style.cssText = 'display:block;overflow-wrap:anywhere;font-size:.82rem';
+      name.textContent = item.name;
+      const meta = document.createElement('span');
+      meta.className = 'hint';
+      meta.textContent = `${item.source === 'drive' ? 'Google Drive' : 'حافظه دستگاه'} · ${item.modified ? new Date(item.modified).toLocaleString('fa-IR') : 'زمان نامشخص'}`;
+      info.append(name, meta);
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'btn btn-sm btn-secondary';
+      restore.textContent = 'بازیابی این نسخه';
+      restore.addEventListener('click', async () => {
+        const when = item.modified ? new Date(item.modified).toLocaleString('fa-IR') : item.name;
+        if (!confirm(`تمام اطلاعات فعلی با نسخه «${item.name}» جایگزین می‌شود. پیش از جایگزینی نسخه اضطراری ساخته خواهد شد. ادامه می‌دهید؟\\n${when}`)) return;
+        restore.disabled = true;
+        restore.textContent = 'در حال بررسی و بازیابی…';
+        const result = await restoreSelectedExternalBackup(item);
+        toast(result.message, result.ok ? 'success' : 'error');
+        restore.disabled = false;
+        restore.textContent = 'بازیابی این نسخه';
+        if (result.ok) window.location.reload();
+      });
+      row.append(info, restore);
+      listEl?.appendChild(row);
+    });
+  };
+  document.getElementById('btnRefreshBackupList')?.addEventListener('click', () => { void refreshBackupManager(); });
+  void refreshBackupManager();
   // Session controls: ensure both visible buttons are wired to their actions.
   // Refresh dependent UI only after the action returns; preserve existing state/data.
   document.getElementById('btnStartSession')?.addEventListener('click', () => {

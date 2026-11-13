@@ -141,6 +141,19 @@ function fromBase64(b64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+/** SHA-256 روی محتوای canonical؛ در محیط‌های فاقد WebCrypto پشتیبان‌گیری متوقف می‌شود. */
+async function sha256(value: unknown): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error('SHA-256 is not available');
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function backupFilename(date = new Date()): string {
+  const stamp = date.toISOString().replace(/[:.]/g, '-');
+  return `anbarin-auto-${stamp}.json`;
+}
+
 export async function buildFullDeviceBackupPayload(): Promise<Record<string, unknown>> {
   const [accounting, commerce, costing] = await Promise.all([
     loadAccountingData().catch(() => null),
@@ -153,9 +166,9 @@ export async function buildFullDeviceBackupPayload(): Promise<Record<string, unk
   } catch {
     localUsers = [];
   }
-  return {
+  const body = {
     schema: 'anbarin-full-device-backup',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     app: {
       products,
@@ -171,6 +184,7 @@ export async function buildFullDeviceBackupPayload(): Promise<Record<string, unk
     localUsers,
     operator: localStorage.getItem('anbar_operator') || '',
   };
+  return { ...body, integrity: { algorithm: 'SHA-256', digest: await sha256(body) } };
 }
 
 export async function writeExternalAutoBackup(force = false): Promise<boolean> {
@@ -191,15 +205,17 @@ export async function writeExternalAutoBackup(force = false): Promise<boolean> {
       return false;
     }
 
-    const day = new Date().toISOString().slice(0, 10);
-    const filename = `anbarin-auto-${day}.json`;
+    const filename = backupFilename(new Date());
     const data = await toBase64(JSON.stringify(payload));
     await NativeAutoBackup.write({ filename, data });
     localStorage.setItem(LAST_KEY, String(Date.now()));
+    localStorage.setItem('anbarin_last_external_backup_iso', new Date().toISOString());
+    localStorage.removeItem('anbarin_last_external_backup_error');
     console.log('[Anbarin] external auto-backup written', filename);
     return true;
   } catch (e) {
     console.warn('[Anbarin] external auto-backup failed', e);
+    try { localStorage.setItem('anbarin_last_external_backup_error', e instanceof Error ? e.message : String(e)); } catch { /* ignore */ }
     return false;
   }
 }
@@ -253,6 +269,7 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
     const tryList = candidates.slice(0, 5);
     type BackupPayload = {
       schema?: string;
+      version?: number;
       app?: {
         products?: unknown[];
         settings?: unknown;
@@ -278,6 +295,16 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
         const raw = fromBase64(file.data);
         const p = JSON.parse(raw) as BackupPayload;
         if (!p || p.schema !== 'anbarin-full-device-backup' || !p.app) continue;
+        // نسخه‌های قدیمی بدون امضا برای سازگاری پذیرفته می‌شوند؛ نسخه جدید باید SHA-256 معتبر داشته باشد.
+        if ((p.version || 0) >= 2) {
+          const integrity = (p as any).integrity;
+          if (!integrity || integrity.algorithm !== 'SHA-256' || typeof integrity.digest !== 'string') continue;
+          const { integrity: _integrity, ...body } = p as any;
+          if (await sha256(body) !== integrity.digest) {
+            console.warn('[Anbarin] backup integrity check failed', cand.name);
+            continue;
+          }
+        }
         const count = Array.isArray(p.app.products) ? p.app.products.length : 0;
         // اولویت با پشتیبانی که واقعاً کالا دارد
         if (count > 0) {
@@ -356,6 +383,99 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
     console.warn('[Anbarin] recover external backup failed', e);
     toast('خطا در بازیابی پشتیبان خودکار', 'error');
     return 'none';
+  }
+}
+
+/** گزارش آخرین اجرای پشتیبان‌گیری برای نمایش در تنظیمات/عیب‌یابی */
+export function getAutoBackupReport(): { lastSuccessAt: string; lastError: string } {
+  return {
+    lastSuccessAt: localStorage.getItem('anbarin_last_external_backup_iso') || '',
+    lastError: localStorage.getItem('anbarin_last_external_backup_error') || '',
+  };
+}
+
+/** فهرست نسخه‌های قابل انتخاب؛ نسخه‌های Drive و حافظه دستگاه جداگانه خوانده می‌شوند. */
+export async function listExternalBackups(): Promise<Array<{ name: string; modified: number; source: 'drive' | 'local'; id?: string }>> {
+  if (!isNativeAndroid()) return [];
+  const result: Array<{ name: string; modified: number; source: 'drive' | 'local'; id?: string }> = [];
+  try {
+    const status = await NativeDriveBackup.getStatus();
+    if (status.connected) {
+      const listed = await NativeDriveBackup.list();
+      for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\\.json$/i.test(f.name))
+        result.push({ name: f.name, modified: f.modified ? Date.parse(f.modified) || 0 : 0, source: 'drive', id: f.id });
+    }
+  } catch (e) { console.warn('[Anbarin] drive backup listing failed', e); }
+  try {
+    const listed = await NativeAutoBackup.list();
+    for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\\.json$/i.test(f.name))
+      result.push({ name: f.name, modified: f.modified || 0, source: 'local' });
+  } catch (e) { console.warn('[Anbarin] local backup listing failed', e); }
+  return result.sort((a, b) => b.modified - a.modified);
+}
+
+
+
+/** بازیابی نسخه انتخاب‌شده؛ اعتبارسنجی SHA-256 و snapshot اضطراری پیش از جایگزینی. */
+export async function restoreSelectedExternalBackup(
+  backup: { name: string; source: 'drive' | 'local'; id?: string }
+): Promise<{ ok: boolean; message: string }> {
+  if (!isNativeAndroid()) return { ok: false, message: 'بازیابی نسخه‌های بیرونی فقط در اپ اندروید فعال است' };
+  try {
+    const response = backup.source === 'drive'
+      ? await NativeDriveBackup.read({ id: backup.id, name: backup.name })
+      : await NativeAutoBackup.read({ name: backup.name });
+    const raw = fromBase64(response.data);
+    const parsed = JSON.parse(raw) as Record<string, any>;
+    if (!parsed || parsed.schema !== 'anbarin-full-device-backup' || !parsed.app ||
+        !Array.isArray(parsed.app.products) ||
+        !parsed.app.products.every((p: unknown) => !!p && typeof p === 'object' && !Array.isArray(p))) {
+      throw new Error('ساختار فایل پشتیبان معتبر نیست');
+    }
+
+    // نسخه‌های جدید باید حتماً SHA-256 معتبر داشته باشند؛ نسخه‌های قدیمی‌تر قابل بازیابی می‌مانند.
+    if (parsed.integrity) {
+      if (parsed.integrity.algorithm !== 'SHA-256' || typeof parsed.integrity.digest !== 'string') {
+        throw new Error('ساختار امضای فایل معتبر نیست');
+      }
+      const { integrity, ...body } = parsed;
+      const actual = await sha256(body);
+      if (actual !== integrity.digest) throw new Error('کنترل SHA-256 ناموفق بود؛ فایل خراب یا تغییر داده شده است');
+    } else if (Number(parsed.version) >= 2) {
+      throw new Error('فایل جدید فاقد امضای SHA-256 است');
+    }
+
+    // قبل از هر تغییری، وضعیت کامل فعلی در IndexedDB نگهداری می‌شود.
+    const { idbPut, persistAppState } = await import('./storage');
+    const emergency = await buildFullDeviceBackupPayload();
+    await idbPut('emergency_before_selected_restore', {
+      savedAt: new Date().toISOString(),
+      payload: emergency,
+      source: backup.name,
+    });
+
+    const app = parsed.app;
+    await persistAppState({
+      products: app.products,
+      settings: app.settings || settings,
+      session: app.session ?? null,
+      auditLog: Array.isArray(app.auditLog) ? app.auditLog : [],
+      recentScans: Array.isArray(app.recentScans) ? app.recentScans : [],
+      inventoryDocs: Array.isArray(app.inventoryDocs) ? app.inventoryDocs : [],
+    } as never);
+    if (parsed.accounting) await saveAccountingData(parsed.accounting as never);
+    if (parsed.commerce) await saveCommerceData(parsed.commerce as never);
+    if (parsed.costing) await saveInventoryCostData(parsed.costing as never);
+    if (Array.isArray(parsed.localUsers)) localStorage.setItem('anbarin_local_users_v1', JSON.stringify(parsed.localUsers));
+    if (typeof parsed.operator === 'string') localStorage.setItem('anbar_operator', parsed.operator);
+
+    await bootState();
+    saveAppState(true);
+    try { sessionStorage.setItem('anbarin_just_restored_external', String(app.products.length)); } catch { /* ignore */ }
+    return { ok: true, message: `بازیابی موفق؛ ${app.products.length.toLocaleString('fa-IR')} کالا` };
+  } catch (error) {
+    console.error('[Anbarin] selected backup restore failed', error);
+    return { ok: false, message: error instanceof Error ? error.message : 'بازیابی ناموفق بود' };
   }
 }
 
