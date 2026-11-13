@@ -588,11 +588,13 @@ function settlementRow(part?:InvoicePaymentPart, opts?:{autoRemaining?:boolean})
        <option value="cheque" ${isCheque?'selected':''}>چک</option>
      </select>
    </div>
-   <label class="field settlement-amount-field settlement-field-box">
-     <span class="settlement-field-label">مبلغ (${currency==='toman'?'تومان':'ریال'})</span>
-     <input data-settle-amount inputmode="numeric" value="${amountVal}" placeholder="مبلغ این مرحله" data-auto-remaining="${auto}">
-   </label>
-   <button type="button" class="btn btn-sm btn-secondary settlement-remove-btn" data-settle-remove title="حذف این مرحله">حذف</button>
+   <div class="settlement-payment-controls">
+     <label class="field settlement-amount-field settlement-field-box">
+       <span class="settlement-field-label">مبلغ (${currency==='toman'?'تومان':'ریال'})</span>
+       <input data-settle-amount inputmode="numeric" value="${amountVal}" placeholder="مبلغ این مرحله" data-auto-remaining="${auto}">
+     </label>
+     <button type="button" class="btn btn-sm btn-secondary settlement-remove-btn" data-settle-remove title="حذف این مرحله">حذف</button>
+   </div>
  </div>
  <div class="settlement-cheque-fields settlement-cheque-stack" data-settle-cheque-block dir="rtl" ${isCheque?'':'hidden'} style="${isCheque?'':'display:none'}">
    <div class="settlement-cheque-title">مشخصات چک</div>

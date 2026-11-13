@@ -2508,10 +2508,23 @@ body > .invoice-jalali-calendar {
 }
 .settlement-stage-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  /* در چیدمان راست‌به‌چپ: انتخاب روش سمت راست و مبلغ/حذف سمت چپ */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
-  align-items: end;
+  align-items: start;
   min-width: 0;
+}
+.settlement-payment-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.settlement-payment-controls .settlement-remove-btn {
+  width: 100%;
+  min-height: 38px;
+  justify-self: stretch;
 }
 .settlement-method-picker,
 [data-settle-method-wrap] {
@@ -2528,21 +2541,22 @@ body > .invoice-jalali-calendar {
 }
 .settlement-method-chips {
   display: flex;
-  flex-wrap: wrap;
-  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-direction: column;
   gap: 6px;
   padding: 5px;
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 14px;
   direction: rtl;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
 }
 .settlement-method-chip {
-  flex: 1 1 auto;
-  min-width: 72px;
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
   border: none;
   background: transparent;
   color: var(--text);
@@ -2655,25 +2669,15 @@ body > .invoice-jalali-calendar {
   text-align: right;
 }
 @media (max-width: 640px) {
+  /* چیدمان دو ستونه حتی در موبایل حفظ می‌شود؛ فقط فاصله‌ها فشرده‌ترند. */
   .settlement-stage-top {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
   }
-  .settlement-stage-top .settlement-remove-btn {
-    width: 100%;
-    justify-self: stretch;
-  }
+  .settlement-stage-card { padding: 10px; }
+  .settlement-method-chip { padding: 9px 6px; font-size: 0.84rem; }
+  .settlement-payment-controls .settlement-remove-btn { padding-inline: 8px; }
   .settlement-totals-grid { grid-template-columns: 1fr; }
-  .settlement-method-chips { border-radius: 14px; }
-}
-@media (max-width: 420px) {
-  .settlement-method-chips {
-    flex-direction: column;
-  }
-  .settlement-method-chip {
-    min-width: 0;
-    width: 100%;
-  }
 }
 
 /* ——— فهرست فشرده فاکتورهای ثبت‌شده پایین فرم ——— */
@@ -3648,4 +3652,94 @@ input[data-pay-amount] {
 }
 .settlement-field-box {
   margin: 0 !important;
+}
+
+
+/* ——— یکدست‌سازی دکمه‌های نوار عملیات فاکتور ——— */
+#accountingCommerceWorkspace .invoice-action-bar,
+#commercePanelSheet .invoice-action-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  align-items: stretch;
+  justify-content: initial;
+  gap: 9px;
+}
+#accountingCommerceWorkspace .invoice-action-bar > .btn,
+#commercePanelSheet .invoice-action-bar > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+#accountingCommerceWorkspace .invoice-action-bar > .btn[hidden],
+#commercePanelSheet .invoice-action-bar > .btn[hidden] {
+  display: none !important;
+}
+@media (max-width: 520px) {
+  #accountingCommerceWorkspace .invoice-action-bar,
+  #commercePanelSheet .invoice-action-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+  #accountingCommerceWorkspace .invoice-action-bar > .btn,
+  #commercePanelSheet .invoice-action-bar > .btn {
+    height: 40px;
+    min-height: 40px;
+    padding-inline: 8px;
+    font-size: 0.84rem;
+  }
+}
+
+
+/* ——— یکدست‌سازی دکمه‌های عملیات فاکتورهای ثبت‌شده ——— */
+#accountingCommerceWorkspace .invoice-list-actions,
+#commercePanelSheet .invoice-list-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+#accountingCommerceWorkspace .invoice-list-actions > .btn,
+#commercePanelSheet .invoice-list-actions > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  border-radius: 8px;
+  font-size: 0.78rem !important;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  #accountingCommerceWorkspace .invoice-list-actions,
+  #commercePanelSheet .invoice-list-actions {
+    grid-template-columns: repeat(2, minmax(64px, 1fr));
+    gap: 5px;
+  }
+  #accountingCommerceWorkspace .invoice-list-actions > .btn,
+  #commercePanelSheet .invoice-list-actions > .btn {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 6px !important;
+    font-size: 0.74rem !important;
+  }
 }
