@@ -226,13 +226,15 @@ export async function persistAppState(state: AppState): Promise<StorageBackend> 
     try {
       const previous = await idbGet<unknown>('autobackup');
       if (isStateSnapshot(previous)) await idbPut('autobackup_prev', previous);
-      // نگهداری پنج نسخه زمان‌دار مستقل برای بازیابی از خطاهای چند ذخیره اخیر.
+      // نگهداری تاریخچه منطقی؛ مقدار صفر یا خالی یعنی بدون محدودیت.
       const historyRaw = await idbGet<unknown>('autobackup_history');
       const history = Array.isArray(historyRaw) ? historyRaw.filter(isStateSnapshot) : [];
       if (isStateSnapshot(previous) && snapshotTime(previous) !== snapshotTime(full)) history.push(previous);
       const unique = new Map<number, typeof full>();
       for (const item of history) unique.set(snapshotTime(item), item as typeof full);
-      const retained = [...unique.values()].sort((a, b) => snapshotTime(a) - snapshotTime(b)).slice(-5);
+      const ordered = [...unique.values()].sort((a, b) => snapshotTime(a) - snapshotTime(b));
+      const configured = Number(localStorage.getItem('anbarin_backup_retention_count') || 0);
+      const retained = Number.isFinite(configured) && configured > 0 ? ordered.slice(-Math.max(1, Math.floor(configured))) : ordered;
       await idbPut('autobackup_history', retained);
       await idbPut('autobackup', full);
     } catch (backupError) {

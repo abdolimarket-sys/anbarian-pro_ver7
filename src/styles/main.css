@@ -3745,7 +3745,7 @@ input[data-pay-amount] {
 }
 
 
-/* Settlement rows only: keep method choices on the right and amount/actions on the left. */
+/* Settlement rows: method remains in the right column; amount and delete stack in the left column. */
 .settlement-stage-card .settlement-stage-top {
   display: grid !important;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) !important;
@@ -3764,8 +3764,9 @@ input[data-pay-amount] {
   grid-column: 2;
   grid-row: 1;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 76px;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: stretch;
   gap: 8px;
   min-width: 0;
   width: 100%;
@@ -3778,22 +3779,25 @@ input[data-pay-amount] {
   margin: 0;
 }
 .settlement-stage-card .settlement-amount-field input {
+  display: block;
   width: 100%;
   min-width: 0;
-  min-height: 40px !important;
+  min-height: 52px !important;
+  padding-inline: 12px;
+  font-size: 1rem;
   box-sizing: border-box;
 }
 .settlement-stage-card .settlement-remove-btn {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 2;
   width: 100%;
   min-width: 0;
-  min-height: 40px !important;
-  height: 40px;
-  align-self: end;
+  min-height: 38px !important;
+  height: 38px;
+  align-self: stretch;
   justify-self: stretch;
   margin: 0;
-  padding-inline: 6px;
+  padding-inline: 8px;
   white-space: nowrap;
 }
 .settlement-stage-card .settlement-method-chips {
@@ -3815,11 +3819,18 @@ input[data-pay-amount] {
     gap: 8px !important;
   }
   .settlement-stage-card .settlement-payment-controls {
-    grid-template-columns: minmax(0, 1fr) 68px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+  .settlement-stage-card .settlement-amount-field input {
+    min-height: 50px !important;
   }
   .settlement-stage-card .settlement-remove-btn {
-    padding-inline: 4px;
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 36px !important;
+    height: 36px;
+    padding-inline: 6px;
     font-size: 0.82rem;
   }
 }
@@ -3829,8 +3840,8 @@ input[data-pay-amount] {
     gap: 6px !important;
   }
   .settlement-stage-card .settlement-payment-controls {
-    grid-template-columns: minmax(0, 1fr) 60px;
-    gap: 5px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
   .settlement-stage-card .settlement-method-chip {
     padding-inline: 4px !important;

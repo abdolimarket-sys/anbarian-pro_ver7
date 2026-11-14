@@ -1126,13 +1126,15 @@ function applyInvoicePaperLayout(html:string,size:'a4'|'a5'):string {
   const a5=size==='a5';
   const css=`
 @media print {
+  @page { size:${a5?'A5':'A4'} portrait; margin:${a5?'5mm':'9mm'}; }
   html,body { margin:0!important; padding:0!important; width:auto!important; background:#fff!important; }
-  body.invoice-print { font-size:${a5?'9':'10'}pt!important; line-height:${a5?'1.35':'1.42'}!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body.invoice-print { font-size:${a5?'8':'10'}pt!important; line-height:${a5?'1.22':'1.42'}!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  ${a5 ? 'body.invoice-print { zoom:.82!important; }' : ''}
   body.invoice-print .sheet { width:100%!important; max-width:none!important; margin:0!important; border:0!important; border-radius:0!important; overflow:visible!important; }
-  body.invoice-print .brand { padding:${a5?'4mm 5mm':'6mm 7mm'}!important; break-inside:avoid; }
+  body.invoice-print .brand { padding:${a5?'2mm 3mm':'6mm 7mm'}!important; break-inside:avoid; }
   body.invoice-print .brand h1 { font-size:${a5?'14':'17'}pt!important; }
   body.invoice-print .brand-meta { padding:${a5?'2mm 5mm':'3mm 7mm'}!important; font-size:${a5?'7.5':'8.5'}pt!important; }
-  body.invoice-print .body { padding:${a5?'4mm 5mm':'6mm 7mm'}!important; }
+  body.invoice-print .body { padding:${a5?'2mm 3mm':'6mm 7mm'}!important; }
   body.invoice-print .head { grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:${a5?'2mm':'3mm'}!important; }
   body.invoice-print .panel { min-width:0; min-height:0!important; padding:${a5?'2mm':'3mm'}!important; break-inside:avoid; }
   body.invoice-print .panel .row { font-size:${a5?'7.2':'8.5'}pt!important; gap:3px!important; }
@@ -1148,7 +1150,7 @@ function applyInvoicePaperLayout(html:string,size:'a4'|'a5'):string {
   body.invoice-print .sum { max-width:${a5?'78mm':'95mm'}!important; font-size:${a5?'8':'9'}pt!important; break-inside:avoid; }
   body.invoice-print .sum div { padding:${a5?'1.5mm 2mm':'2mm 2.5mm'}!important; }
   body.invoice-print .note { font-size:${a5?'7.5':'8.5'}pt!important; }
-  body.invoice-print .sign { grid-template-columns:1fr 1fr!important; gap:${a5?'8mm':'18mm'}!important; margin-top:${a5?'12mm':'18mm'}!important; }
+  body.invoice-print .sign { grid-template-columns:1fr 1fr!important; gap:${a5?'4mm':'18mm'}!important; margin-top:${a5?'4mm':'18mm'}!important; }
   body.invoice-print .footer { margin-top:5mm!important; }
   body.invoice-print .noprint { display:none!important; }
 }
@@ -1157,89 +1159,194 @@ function applyInvoicePaperLayout(html:string,size:'a4'|'a5'):string {
 }
 
 /** فاکتور رسیدی فشرده برای رول‌های حرارتی جیبی ۵۸mm و فروشگاهی ۸۰mm */
-function buildInvoiceHtmlThermal(invoiceId:string,widthMm:58|80):{title:string;html:string;text:string}|null {
+function buildInvoiceHtmlThermal80(invoiceId:string,widthMm:58|80):{title:string;html:string;text:string}|null {
   const invoice=commerce?.invoices.find(i=>i.id===invoiceId); if(!invoice||!commerce)return null;
   const party=commerce.parties.find(p=>p.id===invoice.partyId); if(!party)return null;
   const biz=businessProfile();
   const title=`فاکتور ${invoiceTypeTitle(invoice.type)} ${invoice.number}`;
-  const lineBlocks=invoice.lines.map((l,n)=>`
-    <div class="item">
-      <div class="item-top"><b>${n+1}. ${esc(l.description)}</b></div>
-      <div class="item-row"><span>تعداد ${fa(l.quantityMilli/1000)}</span><span>${esc(l.unit||'عدد')}</span></div>
-      <div class="item-row"><span>فی</span><span>${money(l.unitPriceRial)}</span></div>
-      ${(l.discountRial||0)>0?`<div class="item-row muted"><span>تخفیف</span><span>${money(l.discountRial||0)}</span></div>`:''}
-      <div class="item-row total-line"><span>مبلغ</span><b>${money(l.totalRial)}</b></div>
-    </div>`).join('');
-  const payLines=(invoice.paymentParts||[]).map(x=>{
+  const discountTotal=invoice.lines.reduce((sum,line)=>sum+Math.max(0,Number(line.discountRial)||0),0);
+  const lineRows=invoice.lines.map((line,index)=>`
+    <tr>
+      <td class="idx">${fa(index+1)}</td>
+      <td class="desc">${esc(line.description)}</td>
+      <td class="qty">${fa(line.quantityMilli/1000)}<small>${esc(line.unit||'عدد')}</small></td>
+      <td class="unit-price">${money(line.unitPriceRial)}</td>
+      <td class="amount-cell">
+        <b>${money(line.totalRial)}</b>
+        <small>${(line.discountRial||0)>0?`تخفیف: ${money(line.discountRial||0)}`:'تخفیف: —'}</small>
+      </td>
+    </tr>`).join('');
+  const logoHtml=biz.logo?`<img class="store-logo" src="${biz.logo.replace(/"/g,'')}" alt="لوگوی فروشگاه" />`:'';
+  const buyerTitle=isSaleInvoiceType(invoice.type)?'مشخصات خریدار':'مشخصات فروشنده';
+  const paymentLabels=(invoice.paymentParts||[]).map(x=>{
     const label=x.method==='cash'?'نقدی':x.method==='card'?'کارت':x.method==='cheque'?`چک ${x.chequeNumber||''}`:'اعتباری';
-    return `<div class="item-row"><span>${esc(label)}</span><span>${money(x.amountRial)}</span></div>`;
+    return `<div class="detail-cell"><span>${esc(label)}</span><b>${money(x.amountRial)}</b></div>`;
   }).join('');
-  const logoHtml=biz.logo?`<img src="${biz.logo.replace(/"/g,'')}" alt="" style="max-height:28px;max-width:60px;display:block;margin:0 auto 4px" />`:'';
   const html=`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
-@page{size:${widthMm}mm auto;margin:${widthMm===58?'1.5':'2'}mm}
+@page{size:${widthMm}mm auto;margin:${widthMm===58?'1.2':'1.8'}mm}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#fff;color:#000;font-family:Tahoma,Arial,sans-serif;direction:rtl}
-body{width:${widthMm-4}mm;max-width:${widthMm-4}mm;padding:${widthMm===58?'1.5':'2'}mm;font-size:${widthMm===58?'9.2':'11'}px;line-height:1.42}
-h1{font-size:${widthMm===58?'11':'13'}px;text-align:center;margin:0 0 2px;font-weight:800}
-.sub{text-align:center;font-size:${widthMm===58?'8.5':'10'}px;margin:0 0 3px;color:#333}
-.hr{border:0;border-top:1px dashed #000;margin:5px 0}
-h1,.sub,.party-box,.item-top,.muted{overflow-wrap:anywhere;word-break:break-word}
-.meta div{display:flex;justify-content:space-between;gap:4px;margin:2px 0}
-.meta b{font-weight:700}
-.party-box{padding:4px 0}
-.party-title{font-size:10px;font-weight:800;margin-bottom:2px}
-.item{margin:5px 0;padding-bottom:4px;border-bottom:1px dotted #999}
-.item-top{margin-bottom:2px}
-.item-row{display:flex;justify-content:space-between;gap:4px;font-size:${widthMm===58?'8.5':'10'}px;overflow-wrap:anywhere}
-.item-row.total-line{margin-top:2px}
-.muted{color:#444}
-.sum{margin-top:6px}
-.sum .item-row{font-size:${widthMm===58?'9.2':'11'}px;margin:3px 0}
-.sum .grand{font-size:${widthMm===58?'11':'13'}px;font-weight:800;border-top:1px solid #000;padding-top:4px;margin-top:4px}
-.foot{text-align:center;font-size:${widthMm===58?'7.5':'9'}px;margin-top:8px;color:#333}
-@media print{html,body{width:${widthMm-4}mm!important;max-width:${widthMm-4}mm!important;margin:0!important}.item,.party-box,.sum{break-inside:avoid;page-break-inside:avoid}}
+html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Tahoma,Arial,sans-serif;direction:rtl}
+body{width:${widthMm-3}mm;max-width:${widthMm-3}mm;padding:${widthMm===58?'1':'1.4'}mm;font-size:${widthMm===58?'8':'8.8'}px;line-height:1.28}
+.store-head{display:flex;align-items:center;justify-content:center;gap:7px;padding:2px 0 5px;border-bottom:1px solid #222}
+.store-logo{width:${widthMm===58?'13':'17'}mm;height:${widthMm===58?'13':'17'}mm;object-fit:contain;flex:0 0 auto}
+.store-name{font-size:${widthMm===58?'11':'14'}px;font-weight:900;text-align:center;overflow-wrap:anywhere}
+.store-meta{display:flex;justify-content:center;gap:5px;flex-wrap:wrap;font-size:${widthMm===58?'7':'8'}px;margin-top:2px;color:#333}
+.doc-head{display:flex;justify-content:space-between;gap:5px;padding:4px 0;border-bottom:1px dashed #555;font-weight:700}
+.doc-head span{min-width:0;overflow-wrap:anywhere}
+.party-card{border:1px solid #555;border-radius:5px;padding:3px;margin:3px 0}
+.section-title{font-weight:900;font-size:${widthMm===58?'8':'9'}px;margin-bottom:4px}
+.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px}
+.party-field{min-width:0;display:flex;gap:3px;align-items:flex-start}
+.party-field .label{color:#555;white-space:nowrap}
+.party-field b{min-width:0;overflow-wrap:anywhere;font-weight:700}
+.party-field.full{grid-column:1/-1}
+table{width:100%;border-collapse:collapse;table-layout:fixed;margin:5px 0;font-size:${widthMm===58?'6.8':'8'}px}
+th,td{border:1px solid #777;padding:${widthMm===58?'3px 1px':'3px 1.5px'};text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
+th{background:#eee;font-weight:900}
+.idx{width:7%}.desc{width:31%;text-align:right}.qty{width:12%}.qty small{display:block;font-size:.88em}.unit-price{width:21%}.amount-cell{width:29%}
+.amount-cell b,.amount-cell small{display:block;line-height:1.35}.amount-cell small{font-size:.88em;color:#444;border-top:1px dotted #aaa;margin-top:2px;padding-top:2px}
+.totals{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.total-cell,.detail-cell{border:1px solid #aaa;border-radius:4px;padding:4px;display:flex;justify-content:space-between;align-items:center;gap:4px;min-width:0}
+.total-cell span,.detail-cell span{color:#444;overflow-wrap:anywhere}
+.total-cell b,.detail-cell b{font-weight:800;text-align:left;overflow-wrap:anywhere}
+.total-cell.grand{grid-column:1/-1;border:1.5px solid #222;background:#f3f3f3;font-size:${widthMm===58?'9':'11'}px;padding:5px}
+.more-info{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.more-info .full{grid-column:1/-1}
+.note{border:1px dashed #aaa;border-radius:4px;padding:4px;margin-top:4px;overflow-wrap:anywhere}
+.foot{text-align:center;font-size:${widthMm===58?'7':'8'}px;margin-top:4px;color:#333}
+@media print{html,body{width:${widthMm-3}mm!important;max-width:${widthMm-3}mm!important;margin:0!important}.party-card,table tr,.totals,.more-info{break-inside:avoid;page-break-inside:avoid}}
 </style></head><body>
-${logoHtml}
-<h1>${esc(biz.name)}</h1>
-<div class="sub">فاکتور ${esc(invoiceTypeTitle(invoice.type))} · ${widthMm}mm</div>
-${biz.slogan?`<div class="sub">${esc(biz.slogan)}</div>`:''}
-${biz.phone?`<div class="sub">☎ ${esc(biz.phone)}</div>`:''}
-${biz.address?`<div class="sub">${esc(biz.address)}</div>`:''}
-${biz.nationalId||biz.economicCode?`<div class="sub">${biz.nationalId?`ملی: ${esc(biz.nationalId)}`:''}${biz.nationalId&&biz.economicCode?' · ':''}${biz.economicCode?`اقتصادی: ${esc(biz.economicCode)}`:''}</div>`:''}
-<div class="hr"></div>
-<div class="meta">
-  <div><span>شماره</span><b>${esc(invoice.number)}</b></div>
-  <div><span>تاریخ</span><b>${esc(invoice.date)}</b></div>
-  <div><span>وضعیت</span><b>${invoice.status==='posted'?'قطعی':'پیش‌نویس'}</b></div>
-</div>
-<div class="hr"></div>
-<div class="party-box">
-  <div class="party-title">${isSaleInvoiceType(invoice.type)?'خریدار':'فروشنده'}</div>
-  <div><b>${esc(party.name)}</b></div>
-  ${party.phone?`<div class="item-row"><span>تلفن</span><span>${esc(party.phone)}</span></div>`:''}
-  ${party.nationalId?`<div class="item-row"><span>شناسه</span><span>${esc(party.nationalId)}</span></div>`:''}
-  ${party.economicCode?`<div class="item-row"><span>اقتصادی</span><span>${esc(party.economicCode)}</span></div>`:''}
-  ${party.address?`<div class="muted" style="margin-top:2px">${esc(party.address)}</div>`:''}
-</div>
-<div class="hr"></div>
-${lineBlocks||'<div class="muted">بدون قلم</div>'}
-<div class="hr"></div>
-<div class="sum">
-  <div class="item-row"><span>جمع پس از تخفیف</span><span>${money(invoice.netRial)}</span></div>
-  <div class="item-row"><span>مالیات (${fa((invoice.taxRateBps||0)/100)}٪)</span><span>${money(invoice.taxRial)}</span></div>
-  <div class="item-row grand"><span>مبلغ نهایی</span><span>${money(invoice.grossRial)}</span></div>
-</div>
-${payLines?`<div class="hr"></div><div class="sum"><b>پرداخت</b>${payLines}</div>`:''}
-${invoice.dueDate?`<div class="item-row muted"><span>سررسید</span><span>${esc(invoice.dueDate)}</span></div>`:''}
-${invoice.paymentTerms?`<div class="hr"></div><div class="muted">شرایط: ${esc(invoice.paymentTerms)}</div>`:''}
-${invoice.notes?`<div class="muted">توضیح: ${esc(invoice.notes)}</div>`:''}
+<header class="store-head">${logoHtml}<div><div class="store-name">${esc(biz.name)}</div><div class="store-meta">${biz.phone?`<span>تلفن: ${esc(biz.phone)}</span>`:''}${biz.address?`<span>${esc(biz.address)}</span>`:''}</div></div></header>
+<div class="doc-head"><span>${esc(invoiceTypeTitle(invoice.type))} · ${esc(invoice.number)}</span><span>تاریخ: ${esc(invoice.date)}</span></div>
+<section class="party-card">
+  <div class="section-title">${buyerTitle}</div>
+  <div class="party-grid">
+    <div class="party-field full"><span class="label">نام:</span><b>${esc(party.name)}</b></div>
+    ${party.phone?`<div class="party-field"><span class="label">تلفن:</span><b>${esc(party.phone)}</b></div>`:''}
+    ${party.nationalId?`<div class="party-field"><span class="label">شناسه:</span><b>${esc(party.nationalId)}</b></div>`:''}
+    ${party.economicCode?`<div class="party-field"><span class="label">اقتصادی:</span><b>${esc(party.economicCode)}</b></div>`:''}
+    ${party.address?`<div class="party-field full"><span class="label">نشانی:</span><b>${esc(party.address)}</b></div>`:''}
+  </div>
+</section>
+<table aria-label="اقلام فاکتور">
+<thead><tr><th class="idx">ردیف</th><th class="desc">عنوان کالا</th><th class="qty">تعداد</th><th class="unit-price">قیمت واحد</th><th class="amount-cell">مبلغ / تخفیف</th></tr></thead>
+<tbody>${lineRows||'<tr><td colspan="5">بدون قلم</td></tr>'}</tbody>
+</table>
+<section class="totals">
+  <div class="total-cell"><span>جمع پس از تخفیف</span><b>${money(invoice.netRial)}</b></div>
+  <div class="total-cell"><span>تخفیف اقلام</span><b>${money(discountTotal)}</b></div>
+  <div class="total-cell"><span>مالیات (${fa((invoice.taxRateBps||0)/100)}٪)</span><b>${money(invoice.taxRial)}</b></div>
+  <div class="total-cell"><span>وضعیت</span><b>${invoice.status==='posted'?'قطعی':'پیش‌نویس'}</b></div>
+  <div class="total-cell grand"><span>مبلغ نهایی فاکتور</span><b>${money(invoice.grossRial)}</b></div>
+</section>
+${paymentLabels||invoice.dueDate||invoice.paymentTerms?`<section class="more-info">${paymentLabels}${invoice.dueDate?`<div class="detail-cell"><span>سررسید</span><b>${esc(invoice.dueDate)}</b></div>`:''}${invoice.paymentTerms?`<div class="detail-cell full"><span>شرایط پرداخت</span><b>${esc(invoice.paymentTerms)}</b></div>`:''}</section>`:''}
+${invoice.notes?`<div class="note">توضیحات: ${esc(invoice.notes)}</div>`:''}
 <div class="foot">با تشکر از خرید شما · ${esc(biz.name)}</div>
 </body></html>`;
   const textLines=[
     title,
     `تاریخ: ${invoice.date}`,
-    `${isSaleInvoiceType(invoice.type)?'خریدار':'فروشنده'}: ${party.name}`,
-    ...invoice.lines.map((l,n)=>`${n+1}) ${l.description} | ${fa(l.quantityMilli/1000)} | ${money(l.totalRial)}`),
+    `${buyerTitle}: ${party.name}`,
+    ...invoice.lines.map((line,index)=>`${index+1}) ${line.description} | تعداد ${fa(line.quantityMilli/1000)} | قیمت واحد ${money(line.unitPriceRial)} | مبلغ ${money(line.totalRial)} | تخفیف ${money(line.discountRial||0)}`),
+    `جمع پس از تخفیف: ${money(invoice.netRial)}`,
+    `مبلغ نهایی: ${money(invoice.grossRial)}`,
+  ];
+  return {title,html,text:textLines.join('\n')};
+}
+
+
+function buildInvoiceHtmlThermal(invoiceId:string,widthMm:58|80):{title:string;html:string;text:string}|null {
+  // قالب ۸۰ میلی‌متری بدون تغییر نگه داشته شده؛ طراحی جدید فقط برای رول جیبی ۵۸mm است.
+  if(widthMm===80)return buildInvoiceHtmlThermal80(invoiceId,80);
+  const invoice=commerce?.invoices.find(i=>i.id===invoiceId); if(!invoice||!commerce)return null;
+  const party=commerce.parties.find(p=>p.id===invoice.partyId); if(!party)return null;
+  const biz=businessProfile();
+  const title=`فاکتور ${invoiceTypeTitle(invoice.type)} ${invoice.number}`;
+  const discountTotal=invoice.lines.reduce((sum,line)=>sum+Math.max(0,Number(line.discountRial)||0),0);
+  const lineRows=invoice.lines.map((line,index)=>`
+    <tr>
+      <td class="idx">${fa(index+1)}</td>
+      <td class="desc">${esc(line.description)}</td>
+      <td class="qty">${fa(line.quantityMilli/1000)}<small>${esc(line.unit||'عدد')}</small></td>
+      <td class="unit-price">${money(line.unitPriceRial)}</td>
+      <td class="amount-cell">
+        <b>${money(line.totalRial)}</b>
+        <small>${(line.discountRial||0)>0?`تخفیف: ${money(line.discountRial||0)}`:'تخفیف: —'}</small>
+      </td>
+    </tr>`).join('');
+  const logoHtml=biz.logo?`<img class="store-logo" src="${biz.logo.replace(/"/g,'')}" alt="لوگوی فروشگاه" />`:'';
+  const buyerTitle=isSaleInvoiceType(invoice.type)?'مشخصات خریدار':'مشخصات فروشنده';
+  const paymentLabels=(invoice.paymentParts||[]).map(x=>{
+    const label=x.method==='cash'?'نقدی':x.method==='card'?'کارت':x.method==='cheque'?`چک ${x.chequeNumber||''}`:'اعتباری';
+    return `<div class="detail-cell"><span>${esc(label)}</span><b>${money(x.amountRial)}</b></div>`;
+  }).join('');
+  const html=`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+@page{size:${widthMm}mm auto;margin:${widthMm===58?'1.2':'1.8'}mm}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Tahoma,Arial,sans-serif;direction:rtl}
+body{width:${widthMm-3}mm;max-width:${widthMm-3}mm;padding:${widthMm===58?'1':'1.4'}mm;font-size:${widthMm===58?'8':'9.5'}px;line-height:1.35}
+.store-head{display:flex;align-items:center;justify-content:center;gap:7px;padding:2px 0 5px;border-bottom:1px solid #222}
+.store-logo{width:${widthMm===58?'13':'17'}mm;height:${widthMm===58?'13':'17'}mm;object-fit:contain;flex:0 0 auto}
+.store-name{font-size:${widthMm===58?'11':'14'}px;font-weight:900;text-align:center;overflow-wrap:anywhere}
+.store-meta{display:flex;justify-content:center;gap:5px;flex-wrap:wrap;font-size:${widthMm===58?'7':'8'}px;margin-top:2px;color:#333}
+.doc-head{display:flex;justify-content:space-between;gap:5px;padding:4px 0;border-bottom:1px dashed #555;font-weight:700}
+.doc-head span{min-width:0;overflow-wrap:anywhere}
+.party-card{border:1px solid #555;border-radius:5px;padding:4px;margin:5px 0}
+.section-title{font-weight:900;font-size:${widthMm===58?'8':'9'}px;margin-bottom:4px}
+.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px}
+.party-field{min-width:0;display:flex;gap:3px;align-items:flex-start}
+.party-field .label{color:#555;white-space:nowrap}
+.party-field b{min-width:0;overflow-wrap:anywhere;font-weight:700}
+.party-field.full{grid-column:1/-1}
+table{width:100%;border-collapse:collapse;table-layout:fixed;margin:5px 0;font-size:${widthMm===58?'6.8':'8'}px}
+th,td{border:1px solid #777;padding:${widthMm===58?'3px 1px':'4px 2px'};text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
+th{background:#eee;font-weight:900}
+.idx{width:7%}.desc{width:31%;text-align:right}.qty{width:12%}.qty small{display:block;font-size:.88em}.unit-price{width:21%}.amount-cell{width:29%}
+.amount-cell b,.amount-cell small{display:block;line-height:1.35}.amount-cell small{font-size:.88em;color:#444;border-top:1px dotted #aaa;margin-top:2px;padding-top:2px}
+.totals{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.total-cell,.detail-cell{border:1px solid #aaa;border-radius:4px;padding:4px;display:flex;justify-content:space-between;align-items:center;gap:4px;min-width:0}
+.total-cell span,.detail-cell span{color:#444;overflow-wrap:anywhere}
+.total-cell b,.detail-cell b{font-weight:800;text-align:left;overflow-wrap:anywhere}
+.total-cell.grand{grid-column:1/-1;border:1.5px solid #222;background:#f3f3f3;font-size:${widthMm===58?'9':'11'}px;padding:5px}
+.more-info{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+.more-info .full{grid-column:1/-1}
+.note{border:1px dashed #aaa;border-radius:4px;padding:4px;margin-top:4px;overflow-wrap:anywhere}
+.foot{text-align:center;font-size:${widthMm===58?'7':'8'}px;margin-top:7px;color:#333}
+@media print{html,body{width:${widthMm-3}mm!important;max-width:${widthMm-3}mm!important;margin:0!important}.party-card,table tr,.totals,.more-info{break-inside:avoid;page-break-inside:avoid}}
+</style></head><body>
+<header class="store-head">${logoHtml}<div><div class="store-name">${esc(biz.name)}</div><div class="store-meta">${biz.phone?`<span>تلفن: ${esc(biz.phone)}</span>`:''}${biz.address?`<span>${esc(biz.address)}</span>`:''}</div></div></header>
+<div class="doc-head"><span>${esc(invoiceTypeTitle(invoice.type))} · ${esc(invoice.number)}</span><span>تاریخ: ${esc(invoice.date)}</span></div>
+<section class="party-card">
+  <div class="section-title">${buyerTitle}</div>
+  <div class="party-grid">
+    <div class="party-field full"><span class="label">نام:</span><b>${esc(party.name)}</b></div>
+    ${party.phone?`<div class="party-field"><span class="label">تلفن:</span><b>${esc(party.phone)}</b></div>`:''}
+    ${party.nationalId?`<div class="party-field"><span class="label">شناسه:</span><b>${esc(party.nationalId)}</b></div>`:''}
+    ${party.economicCode?`<div class="party-field"><span class="label">اقتصادی:</span><b>${esc(party.economicCode)}</b></div>`:''}
+    ${party.address?`<div class="party-field full"><span class="label">نشانی:</span><b>${esc(party.address)}</b></div>`:''}
+  </div>
+</section>
+<table aria-label="اقلام فاکتور">
+<thead><tr><th class="idx">ردیف</th><th class="desc">عنوان کالا</th><th class="qty">تعداد</th><th class="unit-price">قیمت واحد</th><th class="amount-cell">مبلغ / تخفیف</th></tr></thead>
+<tbody>${lineRows||'<tr><td colspan="5">بدون قلم</td></tr>'}</tbody>
+</table>
+<section class="totals">
+  <div class="total-cell"><span>جمع پس از تخفیف</span><b>${money(invoice.netRial)}</b></div>
+  <div class="total-cell"><span>تخفیف اقلام</span><b>${money(discountTotal)}</b></div>
+  <div class="total-cell"><span>مالیات (${fa((invoice.taxRateBps||0)/100)}٪)</span><b>${money(invoice.taxRial)}</b></div>
+  <div class="total-cell"><span>وضعیت</span><b>${invoice.status==='posted'?'قطعی':'پیش‌نویس'}</b></div>
+  <div class="total-cell grand"><span>مبلغ نهایی فاکتور</span><b>${money(invoice.grossRial)}</b></div>
+</section>
+${paymentLabels||invoice.dueDate||invoice.paymentTerms?`<section class="more-info">${paymentLabels}${invoice.dueDate?`<div class="detail-cell"><span>سررسید</span><b>${esc(invoice.dueDate)}</b></div>`:''}${invoice.paymentTerms?`<div class="detail-cell full"><span>شرایط پرداخت</span><b>${esc(invoice.paymentTerms)}</b></div>`:''}</section>`:''}
+${invoice.notes?`<div class="note">توضیحات: ${esc(invoice.notes)}</div>`:''}
+<div class="foot">با تشکر از خرید شما · ${esc(biz.name)}</div>
+</body></html>`;
+  const textLines=[
+    title,
+    `تاریخ: ${invoice.date}`,
+    `${buyerTitle}: ${party.name}`,
+    ...invoice.lines.map((line,index)=>`${index+1}) ${line.description} | تعداد ${fa(line.quantityMilli/1000)} | قیمت واحد ${money(line.unitPriceRial)} | مبلغ ${money(line.totalRial)} | تخفیف ${money(line.discountRial||0)}`),
+    `جمع پس از تخفیف: ${money(invoice.netRial)}`,
     `مبلغ نهایی: ${money(invoice.grossRial)}`,
   ];
   return {title,html,text:textLines.join('\n')};

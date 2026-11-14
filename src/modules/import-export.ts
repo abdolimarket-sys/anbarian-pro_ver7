@@ -285,40 +285,13 @@ export function exportCSV(onlyDiff = false): void {
   logAudit('export_csv', { count: list.length, onlyDiff });
 }
 
-// ——— JSON backup ———
+// ——— JSON data import (full backup and restore live only in Settings) ———
 
-async function backupChecksum(value: unknown): Promise<string> {
+async function jsonChecksum(value: unknown): Promise<string> {
   if (!globalThis.crypto?.subtle) throw new Error('SHA-256 is not available');
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-export async function exportJSON(): Promise<void> {
-  if (!guardPermission('inventory.export', 'پشتیبان JSON')) return;
-  const body = {
-    type: 'anbar-backup',
-    version: 5,
-    exportedAt: new Date().toISOString(),
-    warehouse: settings.currentWarehouse,
-    products,
-    settings,
-    session,
-    auditLog,
-    recentScans,
-    inventoryDocs,
-  };
-  let checksum: string;
-  try { checksum = await backupChecksum(body); }
-  catch {
-    toast('امکان تولید امضای امن SHA-256 وجود ندارد؛ پشتیبان ساخته نشد', 'error');
-    return;
-  }
-  const payload = { ...body, checksumAlgorithm: 'SHA-256', checksum };
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  downloadFile(JSON.stringify(payload, null, 2), `anbar-backup-${stamp}.json`, 'application/json');
-  toast('پشتیبان کامل آماده ذخیره است', 'success');
-  logAudit('export_json', { count: products.length, version: 4 });
 }
 
 export async function importJSONFile(file: File): Promise<ImportResult | null> {
@@ -330,19 +303,23 @@ export async function importJSONFile(file: File): Promise<ImportResult | null> {
     toast('فایل JSON معتبر نیست', 'error');
     return null;
   }
+  if (data?.type === 'anbar-backup') {
+    toast('بازیابی پشتیبان کامل فقط از بخش تنظیمات انجام می‌شود؛ از فایل پشتیبان یکپارچه استفاده کنید.', 'error');
+    return null;
+  }
   if (!data || data.type && data.type !== 'anbar-backup' || !Array.isArray(data.products) || !data.products.every((p: any) => p && typeof p === 'object' && !Array.isArray(p))) {
-    toast('ساختار پشتیبان نامعتبر است', 'error');
+    toast('ساختار فایل JSON نامعتبر است', 'error');
     return null;
   }
   if (data.version >= 4 && typeof data.checksum !== 'string') {
-    toast('فایل پشتیبان فاقد checksum است', 'error');
+    toast('فایل JSON فاقد checksum است', 'error');
     return null;
   }
   if (data.checksum) {
     const { checksum, checksumAlgorithm, ...body } = data;
     let valid = false;
     try {
-      if (checksumAlgorithm === 'SHA-256') valid = checksum === await backupChecksum(body);
+      if (checksumAlgorithm === 'SHA-256') valid = checksum === await jsonChecksum(body);
       else if (data.version < 5) {
         // سازگاری با فایل‌های نسخه ۴ که از checksum قدیمی استفاده می‌کردند
         let hash = 0x811c9dc5;
@@ -352,7 +329,7 @@ export async function importJSONFile(file: File): Promise<ImportResult | null> {
       }
     } catch { valid = false; }
     if (!valid) {
-      toast('صحت فایل پشتیبان تأیید نشد؛ فایل تغییر کرده یا خراب است', 'error');
+      toast('صحت فایل JSON تأیید نشد؛ فایل تغییر کرده یا خراب است', 'error');
       return null;
     }
   }

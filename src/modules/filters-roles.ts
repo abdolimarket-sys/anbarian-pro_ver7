@@ -136,7 +136,7 @@ export function applyRoleUI(): void {
     'inventory.count': ['#btnOpenScanner', '#btnQuickCount', '#qtyConfirm', '#btnClearCounts', '#btnZeroUncounted', '#btnApplySystem', '#btnResetToSystem'],
     'inventory.edit': ['#btnAddProduct', '#btnTakePhoto'],
     'inventory.import': ['#btnImport', '#btnImportPhotos'],
-    'inventory.export': ['#btnExportExcel', '#btnExportDiff', '#btnExportCsv', '#btnExportJson', '#btnExportPhotos', '#btnExportDiffs', '#btnExportCountedProducts', '#btnExportInventoryDocs', '#btnExportPartial', '#btnExportMergeReport'],
+    'inventory.export': ['#btnExportExcel', '#btnExportDiff', '#btnExportCsv', '#btnExportPhotos', '#btnExportDiffs', '#btnExportCountedProducts', '#btnExportInventoryDocs', '#btnExportPartial', '#btnExportMergeReport'],
     'session.start': ['#btnStartSession'],
     'session.close': ['#btnCloseSession'],
     'team.sync': ['#btnExportTeam', '#btnImportTeam', '#btnJoinSession', '#btnSyncTeamOnline'],

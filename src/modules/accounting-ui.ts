@@ -6,9 +6,6 @@ import {
   resolveActiveFiscalPeriod, withActiveFiscalPeriod,
   type AccountingData, type AccountLevel, type JournalEntry,
 } from './accounting';
-import { loadCommerceData, saveCommerceData } from './accounting-commerce';
-import { loadInventoryCostData, saveInventoryCostData } from './inventory-costing';
-import { downloadFile, shareFileContent, dateStr } from '@/utils/helpers';
 import { toast } from './ui';
 import { enhanceDateFields } from './date-picker';
 import { enhanceSelectWithSearch, refreshSearchableSelect } from './searchable-select';
@@ -21,7 +18,6 @@ const accountingTabs = [
   {id:'accounts', icon:'▦', label:'کدینگ', desc:'گروه، کل، معین و تفصیلی', tone:'accounts'},
   {id:'fiscal', icon:'▣', label:'سال مالی', desc:'تعریف و انتخاب سال فعال', tone:'fiscal'},
   {id:'reports', icon:'▥', label:'گزارش‌ها', desc:'همه گزارش‌های حسابداری و بازرگانی', tone:'reports'},
-  {id:'backup', icon:'💾', label:'ذخیره', desc:'پشتیبان‌گیری و بازیابی', tone:'other'},
   {id:'settings', icon:'⚙', label:'تنظیمات', desc:'واحد پول و تنظیمات نمایش', tone:'other'},
 ] as const;
 
@@ -170,22 +166,6 @@ function render(): void {
       </div>
     </div>
     <div id="accountingModuleHost" hidden>
-      <section class="acc-section" data-acc-section="backup" hidden><div class="card accounting-inner-card" dir="rtl" style="text-align:right">
-        <h3>ذخیره و بازیابی</h3>
-        <p class="hint">پشتیبان شامل حسابداری، بازرگانی و بهای تمام‌شده است.</p>
-        <ul class="hint" style="margin:8px 0 12px;padding-right:18px;line-height:1.7">
-          <li><b>ذخیره در دستگاه:</b> انتخاب پوشه روی گوشی/رایانه (Downloads، کارت حافظه و …)</li>
-          <li><b>اشتراک‌گذاری:</b> ارسال به Google Drive، تلگرام، واتساپ، ایمیل و سایر برنامه‌ها</li>
-          <li><b>بازیابی:</b> انتخاب همان فایل JSON برای جایگزینی داده‌های حسابداری</li>
-        </ul>
-        <div class="form-grid" style="margin-top:12px;gap:8px">
-          <button type="button" class="btn btn-primary" id="accBackupDownload">ذخیره در دستگاه</button>
-          <button type="button" class="btn btn-secondary" id="accBackupShare">اشتراک‌گذاری (Drive و …)</button>
-          <button type="button" class="btn btn-secondary" id="accBackupRestore">بازیابی از فایل</button>
-          <input type="file" id="accBackupFile" accept="application/json,.json" hidden>
-        </div>
-        <p class="hint" id="accBackupStatus" style="margin-top:12px"></p>
-      </div></section>
       <section class="acc-section" data-acc-section="settings" hidden><div class="card accounting-inner-card acc-settings-panel">
         <h3>تنظیمات حسابداری</h3>
         <p class="hint">سیاست‌های جاری شرکت. ذخیره فقط روی عملیات بعدی اثر دارد و اسناد قبلی را بازنویسی نمی‌کند.</p>
@@ -373,86 +353,6 @@ function bind(): void {
     const hint=el<HTMLElement>('#accSettingsSaveHint');
     if(hint) hint.textContent='آخرین ذخیره: '+new Date().toLocaleString('fa-IR');
     toast('تنظیمات حسابداری ذخیره شد','success');
-  });
-  const buildAccountingBackup=async()=>{
-    const [accounting,commerce,costing]=await Promise.all([loadAccountingData(),loadCommerceData(),loadInventoryCostData()]);
-    return {
-      schema:'anbarin-accounting-backup',
-      version:1,
-      exportedAt:new Date().toISOString(),
-      accounting,
-      commerce,
-      costing,
-    };
-  };
-  const setBackupStatus=(msg:string)=>{const n=el<HTMLElement>('#accBackupStatus');if(n)n.textContent=msg;};
-  el<HTMLButtonElement>('#accBackupDownload')?.addEventListener('click',async()=>{
-    try{
-      setBackupStatus('در حال آماده‌سازی پشتیبان…');
-      const payload=await buildAccountingBackup();
-      const name=`anbarin-backup-${dateStr()}.json`;
-      const result=await downloadFile(JSON.stringify(payload,null,2),name,'application/json;charset=utf-8');
-      if(result==='cancelled'){
-        setBackupStatus('ذخیره لغو شد.');
-        toast('ذخیره لغو شد','info');
-        return;
-      }
-      if(result==='error'){
-        setBackupStatus('ذخیره ناموفق بود. دوباره تلاش کنید.');
-        toast('ذخیره پشتیبان ناموفق بود','error');
-        return;
-      }
-      setBackupStatus('فایل در دستگاه ذخیره شد: '+name);
-      toast('پشتیبان در دستگاه ذخیره شد','success');
-    }catch(e){toast(e instanceof Error?e.message:'خطا در ذخیره پشتیبان','error')}
-  });
-  el<HTMLButtonElement>('#accBackupShare')?.addEventListener('click',async()=>{
-    try{
-      setBackupStatus('در حال آماده‌سازی برای اشتراک‌گذاری…');
-      const payload=await buildAccountingBackup();
-      const text=JSON.stringify(payload,null,2);
-      const name=`anbarin-backup-${dateStr()}.json`;
-      const result=await shareFileContent(text,name,'application/json',{
-        title:'پشتیبان حسابداری انبارین',
-        text:'فایل پشتیبان حسابداری، بازرگانی و بهای تمام‌شده',
-      });
-      if(result==='shared'){
-        setBackupStatus('پنجره اشتراک باز شد — Drive، تلگرام، ایمیل و … را انتخاب کنید.');
-        toast('برنامه مقصد را برای اشتراک انتخاب کنید','success');
-        return;
-      }
-      if(result==='cancelled'){
-        setBackupStatus('اشتراک‌گذاری لغو شد.');
-        return;
-      }
-      // اگر شیت اشتراک در دسترس نبود، عمداً ذخیره در دستگاه پیشنهاد می‌شود (نه جایگزین بی‌صدا)
-      setBackupStatus('اشتراک‌گذاری سیستم در دسترس نیست. می‌توانید «ذخیره در دستگاه» را بزنید.');
-      toast('اشتراک‌گذاری در این دستگاه پشتیبانی نشد','info');
-    }catch(e){
-      if(e instanceof Error&&e.name==='AbortError')return;
-      toast(e instanceof Error?e.message:'خطا در اشتراک‌گذاری','error');
-    }
-  });
-  el<HTMLButtonElement>('#accBackupRestore')?.addEventListener('click',()=>el<HTMLInputElement>('#accBackupFile')?.click());
-  el<HTMLInputElement>('#accBackupFile')?.addEventListener('change',async()=>{
-    const input=el<HTMLInputElement>('#accBackupFile');
-    const file=input?.files?.[0];
-    if(!file)return;
-    try{
-      const raw=await file.text();
-      const parsed=JSON.parse(raw) as {schema?:string;version?:number;accounting?:AccountingData;commerce?:unknown;costing?:unknown};
-      if(parsed.schema!=='anbarin-accounting-backup'||!parsed.accounting||!parsed.commerce||!parsed.costing)throw new Error('فایل پشتیبان معتبر نیست.');
-      if(!confirm('بازیابی، داده‌های فعلی حسابداری را جایگزین می‌کند. ادامه می‌دهید؟')){input.value='';return;}
-      await saveAccountingData(parsed.accounting);
-      await saveCommerceData(parsed.commerce as Parameters<typeof saveCommerceData>[0]);
-      await saveInventoryCostData(parsed.costing as Parameters<typeof saveInventoryCostData>[0]);
-      data=await loadAccountingData();
-      setBackupStatus('بازیابی از فایل انجام شد: '+file.name);
-      toast('بازیابی انجام شد','success');
-      window.dispatchEvent(new Event('accounting:data-updated'));
-      render();
-    }catch(e){toast(e instanceof Error?e.message:'خطا در بازیابی','error')}
-    finally{if(input)input.value='';}
   });
 
   const level=el<HTMLSelectElement>('#accLevel')!; const parent=el<HTMLSelectElement>('#accParent')!;

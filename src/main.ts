@@ -14,13 +14,17 @@ import {
 import { toast, showPage, loadTheme, bindThemeControls } from './modules/ui';
 import { findProductByCode } from './modules/state';
 import { initLocalAuth } from './modules/local-auth';
-import { initExternalAutoBackupScheduler, tryRecoverFromExternalBackup, getAutoBackupLocationStatus, pickAutoBackupFolder, clearAutoBackupFolder, writeExternalAutoBackup, getGoogleDriveAccountStatus, connectGoogleDriveAccount, disconnectGoogleDriveAccount, listExternalBackups, restoreSelectedExternalBackup, getAutoBackupReport } from './modules/device-auto-backup';
+import { initializeBackupPassword, initializeOrganizationRecoveryKey, importOrganizationPublicKey, changeBackupPassword, hasBackupPasswordSetup, hasBackupEncryptionSetup } from './modules/backup-crypto';
+import { initExternalAutoBackupScheduler, tryRecoverFromExternalBackup, recoverInterruptedSelectedRestore, getAutoBackupLocationStatus, pickAutoBackupFolder, clearAutoBackupFolder, writeExternalAutoBackup, getGoogleDriveAccountStatus, connectGoogleDriveAccount, disconnectGoogleDriveAccount, listExternalBackups, restoreSelectedExternalBackup, getAutoBackupReport, buildFullDeviceBackupPayload, restoreBackupFile } from './modules/device-auto-backup';
 import { initAccountingUI } from './modules/accounting-ui';
 import { initAccountingCommerceUI } from './modules/accounting-commerce-ui';
 import { initAccountingReportsUI } from './modules/accounting-reports';
+import { initTaxpayerUI } from './modules/taxpayer';
 import { renderDataHealth } from './modules/data-health';
 import { initUnifiedDatePickers } from './modules/date-picker';
 import { showDueReminderOnEntry } from './modules/due-reminders';
+import { downloadFile, dateStr } from './utils/helpers';
+import { encryptBackupPayload } from './modules/backup-crypto';
 
 // پیام نهایی ذخیره‌سازی فایل در اپ اندروید (پس از انتخاب پوشه و نوشتن موفق).
 window.addEventListener('anbarin:file-saved', (event: Event) => {
@@ -60,7 +64,6 @@ import {
 import {
   exportExcel,
   exportCSV,
-  exportJSON,
   processImportFile,
   loadSheetJS,
 } from './modules/import-export';
@@ -280,8 +283,12 @@ async function bootApp() {
     let source = await bootState();
     console.log('[Anbarin] boot source:', source, '| products:', products.length);
 
+    // اگر فرآیند هنگام بازیابی قبلی متوقف شده باشد، ابتدا snapshot اضطراری را برگردان.
+    const interruptedRestore = await recoverInterruptedSelectedRestore();
+    if (interruptedRestore === 'recovered') source = await bootState();
+
     // اگر داده داخلی خالی است، از پشتیبان Documents/AnbarinBackups بازیابی پیشنهاد می‌شود
-    if (source === 'empty' || products.length === 0) {
+    if (interruptedRestore !== 'failed' && (source === 'empty' || products.length === 0)) {
       const recovered = await tryRecoverFromExternalBackup();
       if (recovered === 'restored') {
         source = await bootState();
@@ -296,6 +303,7 @@ async function bootApp() {
     await initAccountingUI();
     await initAccountingCommerceUI();
     await initAccountingReportsUI();
+    initTaxpayerUI();
     setCountChangeListener(() => {
       updateHeader();
       updateUndoBtn();
@@ -388,7 +396,7 @@ function renderShell() {
         <div class="logo-area">
           <img class="brand-logo" src="./logo.png" alt="لوگوی انبارین" />
           <div class="brand-title"><strong>انبارین</strong>
-          <span class="version">v2.0.1</span>
+          <span class="version">v2.0.4</span>
           <span class="role-badge" id="roleBadge">—</span></div>
         </div>
         <div class="header-stats" id="headerStats"></div>
@@ -662,12 +670,33 @@ function renderShell() {
             <h3 style="margin:0 0 6px;font-size:1rem">پشتیبان خودکار و آنلاین</h3>
             <p class="hint" style="margin:0 0 8px"><b>Google Drive:</b> روی «ورود Google Drive» بزنید. اگر ورود مستقیم حساب ممکن باشد بدون انتخاب پوشه وصل می‌شود؛ در غیر این صورت یک‌بار پوشه Drive را انتخاب می‌کنید و بعدش خودکار ادامه می‌یابد. بدون اتصال، پشتیبان محلی فعال است.</p>
             <p class="hint auto-backup-status" id="autoBackupLocationLabel" style="margin:0 0 10px">وضعیت: —</p>
+            <p class="hint" style="margin:0 0 8px">پشتیبان واحد و رمزنگاری‌شده برنامه؛ شامل ماژول‌های دارای لایسنس فعال. برای ساخت فایل، رمز بازیابی و کلید عمومی سازمان باید در همین بخش تنظیم شده باشد. در بازیابی، فقط ماژول‌های مجاز فعلی جایگزین می‌شوند.</p>
+            <div class="auto-backup-actions" role="group" aria-label="پشتیبان‌گیری و بازیابی دستی">
+              <button type="button" class="btn btn-sm btn-primary" id="btnExportUnifiedBackup">ذخیره فایل پشتیبان</button>
+              <button type="button" class="btn btn-sm btn-secondary" id="btnImportUnifiedBackup">بازیابی از فایل</button>
+              <input type="file" id="unifiedBackupFile" accept="application/json,.json" hidden />
+            </div>
+            <p class="hint" id="unifiedBackupStatus" role="status" style="margin:6px 0 10px"></p>
             <div class="auto-backup-actions" role="group" aria-label="گزینه‌های پشتیبان">
               <button type="button" class="btn btn-sm auto-backup-btn" id="btnConnectGoogleDriveAccount" data-backup-role="drive-connect">ورود Google Drive</button>
               <button type="button" class="btn btn-sm auto-backup-btn" id="btnDisconnectGoogleDriveAccount" data-backup-role="drive-disconnect">قطع Drive</button>
               <button type="button" class="btn btn-sm auto-backup-btn" id="btnPickAutoBackupFolder" data-backup-role="local-pick">پوشه محلی</button>
               <button type="button" class="btn btn-sm auto-backup-btn" id="btnResetAutoBackupFolder" data-backup-role="local-default">پیش‌فرض محلی</button>
               <button type="button" class="btn btn-sm auto-backup-btn auto-backup-btn-run" id="btnRunAutoBackupNow" data-backup-role="run-now">پشتیبان همین حالا</button>
+            </div>
+            <div class="backup-encryption-setup" style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg)">
+              <strong>امنیت رمزنگاری بکاپ (AES-256-GCM + Hybrid)</strong>
+              <p class="hint" style="margin:5px 0 8px">ابتدا یک رمز بازیابی حداقل ۱۲ نویسه‌ای تعیین کنید. سپس کلید سازمانی بسازید و فایل کلید خصوصی را خارج از گوشی، نزد مدیر اصلی نگهداری کنید.</p>
+              <label class="hint" for="backupRecoveryPassword">رمز بازیابی بکاپ</label>
+              <input id="backupRecoveryPassword" type="password" minlength="12" autocomplete="new-password" placeholder="رمز بازیابی؛ حداقل ۱۲ نویسه" style="width:100%;margin:4px 0 6px" />
+              <input id="backupRecoveryPasswordConfirm" type="password" minlength="12" autocomplete="new-password" placeholder="تکرار رمز بازیابی" style="width:100%;margin:0 0 8px" />
+              <button type="button" class="btn btn-sm btn-secondary" id="btnSetupBackupPassword">تنظیم رمز بازیابی</button>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <button type="button" class="btn btn-sm btn-secondary" id="btnGenerateOrgRecoveryKey">ساخت کلید سازمانی</button>
+                <label class="btn btn-sm btn-secondary" for="orgRecoveryPublicKeyFile">واردکردن کلید عمومی سازمان</label>
+                <input id="orgRecoveryPublicKeyFile" type="file" accept=".pem,.txt" hidden />
+              </div>
+              <p class="hint" id="backupCryptoStatus" role="status" style="margin:8px 0 0">وضعیت رمزنگاری: برای شروع، رمز بازیابی و کلید سازمانی را تنظیم کنید.</p>
             </div>
             <div class="backup-manager" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
@@ -846,7 +875,6 @@ function renderShell() {
             <button class="btn btn-success btn-block" id="btnExportExcel">📥 دانلود اکسل کامل</button>
             <button class="btn btn-primary btn-block" id="btnExportDiff">📥 دانلود فقط مغایرت‌ها</button>
             <button class="btn btn-secondary btn-block" id="btnExportCsv">📄 دانلود CSV</button>
-            <button class="btn btn-secondary btn-block" id="btnExportJson">💾 پشتیبان JSON</button>
             <button class="btn btn-secondary btn-block" id="btnExportPhotos">🖼 خروجی بسته عکس‌ها</button>
             <button class="btn btn-secondary btn-block" id="btnImportPhotos">📥 ورود بسته عکس‌ها</button>
             <input type="file" id="photoPackFile" accept=".json" style="display:none" />
@@ -963,6 +991,46 @@ function compactReportSections(): void {
 function bindEvents() {
   bindBusinessLogoControls();
   bindThemeControls();
+  const unifiedBackupStatus = (message: string) => {
+    const node = document.getElementById('unifiedBackupStatus');
+    if (node) node.textContent = message;
+  };
+  document.getElementById('btnExportUnifiedBackup')?.addEventListener('click', async () => {
+    const button = document.getElementById('btnExportUnifiedBackup') as HTMLButtonElement;
+    button.disabled = true;
+    try {
+      unifiedBackupStatus('در حال آماده‌سازی پشتیبان بر اساس لایسنس فعال…');
+      const payload = await buildFullDeviceBackupPayload();
+      const encrypted = await encryptBackupPayload(payload);
+      const filename = `anbarin-backup-${dateStr()}.json`;
+      const result = await downloadFile(JSON.stringify(encrypted, null, 2), filename, 'application/json;charset=utf-8');
+      if (result === 'cancelled') unifiedBackupStatus('ذخیره فایل لغو شد.');
+      else if (result === 'error') throw new Error('ذخیره فایل پشتیبان ناموفق بود.');
+      else { unifiedBackupStatus(`پشتیبان واحد ذخیره شد: ${filename}`); toast('پشتیبان واحد ذخیره شد', 'success'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ساخت پشتیبان ناموفق بود';
+      unifiedBackupStatus(message); toast(message, 'error');
+    } finally { button.disabled = false; }
+  });
+  document.getElementById('btnImportUnifiedBackup')?.addEventListener('click', () => (document.getElementById('unifiedBackupFile') as HTMLInputElement | null)?.click());
+  document.getElementById('unifiedBackupFile')?.addEventListener('change', async () => {
+    const input = document.getElementById('unifiedBackupFile') as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+      const confirmation = 'فقط اطلاعات ماژول‌های دارای لایسنس فعلی از فایل بازیابی می‌شود و داده‌های ماژول‌های دیگر تغییر نمی‌کند. پیش از ادامه، نسخه اضطراری ساخته می‌شود. ادامه می‌دهید؟';
+      if (!confirm(confirmation)) return;
+      unifiedBackupStatus('در حال اعتبارسنجی و بازیابی…');
+      const result = await restoreBackupFile(file);
+      unifiedBackupStatus(result.message);
+      toast(result.message, result.ok ? 'success' : 'error');
+      if (result.ok) window.location.reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'بازیابی پشتیبان ناموفق بود';
+      unifiedBackupStatus(message); toast(message, 'error');
+    } finally { if (input) input.value = ''; }
+  });
+
   const refreshBackupLoc = async () => {
     const el = document.getElementById('autoBackupLocationLabel');
     const setActive = (role: string | null) => {
@@ -1051,6 +1119,63 @@ function bindEvents() {
     const ok = await writeExternalAutoBackup(true);
     toast(ok ? 'پشتیبان خودکار ذخیره شد' : 'پشتیبان نوشته نشد (داده خالی یا فقط وب)', ok ? 'success' : 'info');
     void refreshBackupLoc();
+  });
+
+  const cryptoStatus = document.getElementById('backupCryptoStatus');
+  if (cryptoStatus) cryptoStatus.textContent = hasBackupEncryptionSetup()
+    ? 'رمزنگاری آماده است: بکاپ‌های جدید با AES-256-GCM و دو مسیر بازیابی کاربر/مدیر ساخته می‌شوند.'
+    : hasBackupPasswordSetup()
+      ? 'رمز بازیابی کاربر تنظیم شده؛ برای فعال‌شدن بکاپ رمزنگاری‌شده، کلید عمومی سازمان را بسازید یا وارد کنید.'
+      : 'وضعیت رمزنگاری: برای شروع، رمز بازیابی و کلید سازمانی را تنظیم کنید.';
+  document.getElementById('btnSetupBackupPassword')?.addEventListener('click', async () => {
+    const field = document.getElementById('backupRecoveryPassword') as HTMLInputElement | null;
+    const password = field?.value || '';
+    const confirmPassword = (document.getElementById('backupRecoveryPasswordConfirm') as HTMLInputElement | null)?.value || '';
+    try {
+      if (password.length < 12) throw new Error('رمز بازیابی باید حداقل ۱۲ نویسه داشته باشد');
+      if (password !== confirmPassword) throw new Error('تکرار رمز بازیابی یکسان نیست');
+      if (hasBackupPasswordSetup()) {
+        const currentPassword = window.prompt('رمز بازیابی فعلی را وارد کنید تا فقط پوشش کلید تغییر کند.');
+        if (!currentPassword) return;
+        await changeBackupPassword(currentPassword, password);
+        if (cryptoStatus) cryptoStatus.textContent = 'رمز بازیابی تغییر کرد؛ داده‌های بکاپ رمزنگاری مجدد نمی‌شوند و نسخه‌های قبلی با رمز قبلی خودشان باقی می‌مانند.';
+        toast('رمز بازیابی جدید تنظیم شد', 'success');
+      } else {
+        await initializeBackupPassword(password);
+        if (cryptoStatus) cryptoStatus.textContent = 'کلید بازیابی کاربر ساخته شد. اکنون کلید سازمانی را ایجاد یا وارد کنید.';
+        toast('رمز بازیابی بکاپ تنظیم شد', 'success');
+      }
+      if (field) field.value = '';
+      const confirmField = document.getElementById('backupRecoveryPasswordConfirm') as HTMLInputElement | null; if (confirmField) confirmField.value = '';
+    } catch (error) { toast(error instanceof Error ? error.message : 'تنظیم رمز ناموفق بود', 'error'); }
+  });
+  document.getElementById('btnGenerateOrgRecoveryKey')?.addEventListener('click', async () => {
+    try {
+      if (!confirm('کلید سازمانی جدید ساخته شود؟ کلید خصوصی باید فوراً دانلود و خارج از دستگاه نگهداری شود. اگر کلید قبلی را جایگزین کنید، بکاپ‌های قبلی فقط با کلید قبلی قابل بازیابی‌اند.')) return;
+      const managerPassword = window.prompt('یک رمز مستقل و قوی برای محافظت از کلید خصوصی مدیر تعیین کنید (حداقل ۱۲ نویسه).');
+      const managerPasswordConfirm = window.prompt('رمز محافظ کلید مدیر را دوباره وارد کنید.');
+      if (!managerPassword || managerPassword.length < 12) throw new Error('رمز محافظ کلید مدیر باید حداقل ۱۲ نویسه داشته باشد');
+      if (managerPassword !== managerPasswordConfirm) throw new Error('تکرار رمز محافظ کلید مدیر یکسان نیست');
+      const pair = await initializeOrganizationRecoveryKey(managerPassword);
+      const downloadText = (filename: string, content: string) => {
+        const url = URL.createObjectURL(new Blob([content], { type: 'application/json;charset=utf-8' }));
+        const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      };
+      downloadText('anbarin-organization-private-key.json', JSON.stringify(pair.privateKeyPackage, null, 2));
+      downloadText('anbarin-organization-public-key.pem', pair.publicKeyPem);
+      if (cryptoStatus) cryptoStatus.textContent = `کلید سازمانی آماده شد (شناسه ${pair.keyId}). فایل خصوصی رمزدار را همراه رمز محافظ، جداگانه و آفلاین نگهداری کنید؛ گم‌شدن هر دو مسیر بازیابی مدیر را از بین می‌برد.`;
+      toast('کلیدهای سازمانی ساخته و فایل‌ها آماده دانلود شدند', 'success');
+    } catch (error) { toast(error instanceof Error ? error.message : 'ساخت کلید سازمانی ناموفق بود', 'error'); }
+  });
+  document.getElementById('orgRecoveryPublicKeyFile')?.addEventListener('change', async (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
+    try {
+      const keyId = await importOrganizationPublicKey(await file.text());
+      if (cryptoStatus) cryptoStatus.textContent = `کلید عمومی سازمان وارد شد (شناسه ${keyId}). بکاپ‌های جدید با این کلید برای مدیر اصلی قابل بازیابی خواهند بود.`;
+      toast('کلید عمومی سازمان وارد شد', 'success');
+    } catch (error) { toast(error instanceof Error ? error.message : 'کلید عمومی نامعتبر است', 'error'); }
+    (event.target as HTMLInputElement).value = '';
   });
 
   const refreshBackupManager = async () => {
@@ -1539,7 +1664,6 @@ function bindEvents() {
     exportExcel(true);
   });
   document.getElementById('btnExportCsv')?.addEventListener('click', () => exportCSV(false));
-  document.getElementById('btnExportJson')?.addEventListener('click', () => exportJSON());
 
   document.querySelectorAll('.nav-item').forEach((btn) => {
     btn.addEventListener('click', () => {

@@ -8,6 +8,9 @@ import { loadAccountingData, saveAccountingData } from './accounting';
 import { loadCommerceData, saveCommerceData } from './accounting-commerce';
 import { loadInventoryCostData, saveInventoryCostData } from './inventory-costing';
 import { toast } from './ui';
+import { getLicensedBackupScope, getBackupScopeFromPayload } from './backup-scope';
+import { isValidCommerceBackup } from './backup-commerce-validation.js';
+import { encryptBackupPayload, decryptBackupWithPassword, decryptBackupWithOrganizationKeyPackage, isEncryptedBackup, type BackupEnvelope } from './backup-crypto';
 
 interface AutoBackupAPI {
   write(options: { filename: string; data: string }): Promise<{ ok: boolean; filename?: string; uri?: string; mode?: string }>;
@@ -154,11 +157,15 @@ function backupFilename(date = new Date()): string {
   return `anbarin-auto-${stamp}.json`;
 }
 
-export async function buildFullDeviceBackupPayload(): Promise<Record<string, unknown>> {
+export async function buildFullDeviceBackupPayload(options: { includeAllModules?: boolean } = {}): Promise<Record<string, unknown>> {
+  const scope = options.includeAllModules
+    ? { count: true, accounting: true, modules: ['count', 'accounting'] as const }
+    : getLicensedBackupScope();
+  if (!scope.modules.length) throw new Error('برای تهیه پشتیبان، حداقل یک ماژول باید لایسنس فعال داشته باشد.');
   const [accounting, commerce, costing] = await Promise.all([
-    loadAccountingData().catch(() => null),
-    loadCommerceData().catch(() => null),
-    loadInventoryCostData().catch(() => null),
+    scope.accounting ? loadAccountingData().catch(() => null) : Promise.resolve(null),
+    scope.accounting ? loadCommerceData().catch(() => null) : Promise.resolve(null),
+    scope.accounting ? loadInventoryCostData().catch(() => null) : Promise.resolve(null),
   ]);
   let localUsers: unknown = [];
   try {
@@ -168,16 +175,18 @@ export async function buildFullDeviceBackupPayload(): Promise<Record<string, unk
   }
   const body = {
     schema: 'anbarin-full-device-backup',
-    version: 2,
+    version: 4,
+    scope: { modules: [...scope.modules] },
+    compatibility: { minReaderVersion: 1, dataSchema: 'incremental-v1' },
     exportedAt: new Date().toISOString(),
-    app: {
+    app: scope.count ? {
       products,
       settings,
       session,
-      auditLog: (auditLog || []).slice(-500),
+      auditLog: (auditLog || []).slice(),
       recentScans,
       inventoryDocs,
-    },
+    } : null,
     accounting,
     commerce,
     costing,
@@ -201,17 +210,29 @@ export async function writeExternalAutoBackup(force = false): Promise<boolean> {
     const invCount = Array.isArray((payload.commerce as { invoices?: unknown[] } | null)?.invoices)
       ? ((payload.commerce as { invoices: unknown[] }).invoices.length)
       : 0;
-    if (productCount === 0 && !hasUsers && invCount === 0) {
+    const hasAccountingData = !!payload.accounting || !!payload.commerce || !!payload.costing;
+    if (productCount === 0 && !hasUsers && invCount === 0 && !hasAccountingData) {
       return false;
     }
 
     const filename = backupFilename(new Date());
-    const data = await toBase64(JSON.stringify(payload));
+    const encrypted = await encryptBackupPayload(payload);
+    const data = await toBase64(JSON.stringify(encrypted));
+    // ذخیره محلی نقطه پایه است؛ در صورت اتصال، همان بسته بدون تغییر به Drive نیز فرستاده می‌شود.
     await NativeAutoBackup.write({ filename, data });
+    let cloudWarning = '';
+    try {
+      const drive = await NativeDriveBackup.getStatus();
+      if (drive.connected) await NativeDriveBackup.write({ filename, data });
+    } catch (cloudError) {
+      cloudWarning = cloudError instanceof Error ? cloudError.message : String(cloudError);
+      console.warn('[Anbarin] cloud backup upload failed; local copy is safe', cloudError);
+    }
     localStorage.setItem(LAST_KEY, String(Date.now()));
     localStorage.setItem('anbarin_last_external_backup_iso', new Date().toISOString());
-    localStorage.removeItem('anbarin_last_external_backup_error');
-    console.log('[Anbarin] external auto-backup written', filename);
+    if (cloudWarning) localStorage.setItem('anbarin_last_external_backup_error', `پشتیبان محلی موفق؛ ارسال ابری ناموفق: ${cloudWarning}`);
+    else localStorage.removeItem('anbarin_last_external_backup_error');
+    console.log('[Anbarin] external auto-backup written', filename, cloudWarning ? '(cloud pending)' : '');
     return true;
   } catch (e) {
     console.warn('[Anbarin] external auto-backup failed', e);
@@ -270,6 +291,7 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
     type BackupPayload = {
       schema?: string;
       version?: number;
+      scope?: { modules?: unknown };
       app?: {
         products?: unknown[];
         settings?: unknown;
@@ -286,6 +308,7 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
     };
     let chosen: Cand | null = null;
     let parsed: BackupPayload | null = null;
+    let chosenEncrypted = false;
 
     for (const cand of tryList) {
       try {
@@ -293,8 +316,11 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
           ? await NativeDriveBackup.read({ id: cand.id, name: cand.name })
           : await NativeAutoBackup.read({ name: cand.name });
         const raw = fromBase64(file.data);
-        const p = JSON.parse(raw) as BackupPayload;
-        if (!p || p.schema !== 'anbarin-full-device-backup' || !p.app) continue;
+        const p = JSON.parse(raw) as BackupPayload | BackupEnvelope;
+        if (isEncryptedBackup(p)) { chosen = cand; chosenEncrypted = true; break; }
+        if (!p || p.schema !== 'anbarin-full-device-backup') continue;
+        const candidateScope = getBackupScopeFromPayload(p);
+        if (!candidateScope.count && !candidateScope.accounting) continue;
         // نسخه‌های قدیمی بدون امضا برای سازگاری پذیرفته می‌شوند؛ نسخه جدید باید SHA-256 معتبر داشته باشد.
         if ((p.version || 0) >= 2) {
           const integrity = (p as any).integrity;
@@ -305,9 +331,10 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
             continue;
           }
         }
-        const count = Array.isArray(p.app.products) ? p.app.products.length : 0;
+        const count = Array.isArray(p.app?.products) ? p.app.products.length : 0;
+        const hasAccounting = candidateScope.accounting && !!(p.accounting || p.commerce || p.costing);
         // اولویت با پشتیبانی که واقعاً کالا دارد
-        if (count > 0) {
+        if (count > 0 || hasAccounting) {
           chosen = cand;
           parsed = p;
           break;
@@ -321,12 +348,21 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
       }
     }
 
-    if (!chosen || !parsed || !parsed.app) {
+    if (!chosen) {
       toast('پشتیبان پیدا شد ولی خواندن فایل ممکن نشد', 'error');
       return 'none';
     }
+    if (chosenEncrypted) {
+      const secureRestore = await restoreSelectedExternalBackup(chosen);
+      if (secureRestore.ok) return 'restored';
+      toast(secureRestore.message, 'error');
+      return 'none';
+    }
+    if (!parsed) return 'none';
+    const restoreScope = getBackupScopeFromPayload(parsed);
+    if (!restoreScope.count && !restoreScope.accounting) return 'none';
 
-    const productCount = Array.isArray(parsed.app.products) ? parsed.app.products.length : 0;
+    const productCount = Array.isArray(parsed.app?.products) ? parsed.app.products.length : 0;
     const where = chosen.source === 'drive' ? 'Google Drive' : 'حافظه دستگاه';
 
     // اگر کالا داخل پشتیبان هست و داخل اپ خالی است، بازیابی را خودکار انجام بده
@@ -350,27 +386,29 @@ export async function tryRecoverFromExternalBackup(): Promise<'restored' | 'none
 
     // بازگردانی state اصلی از طریق بازنویسی و boot دوباره
     const { persistAppState } = await import('./storage');
-    const restoredProducts = (parsed.app.products as never[]) || [];
-    await persistAppState({
-      products: restoredProducts,
-      settings: (parsed.app.settings as never) || settings,
-      session: (parsed.app.session as never) || null,
-      auditLog: (parsed.app.auditLog as never[]) || [],
-      recentScans: (parsed.app.recentScans as never[]) || [],
-      inventoryDocs: (parsed.app.inventoryDocs as never[]) || [],
-    } as never);
+    const restoredProducts = (parsed.app?.products as never[]) || [];
+    if (restoreScope.count && parsed.app) {
+      await persistAppState({
+        products: restoredProducts,
+        settings: (parsed.app.settings as never) || settings,
+        session: (parsed.app.session as never) || null,
+        auditLog: (parsed.app.auditLog as never[]) || [],
+        recentScans: (parsed.app.recentScans as never[]) || [],
+        inventoryDocs: (parsed.app.inventoryDocs as never[]) || [],
+      } as never);
+    }
 
-    if (parsed.accounting) await saveAccountingData(parsed.accounting as never);
-    if (parsed.commerce) await saveCommerceData(parsed.commerce as never);
-    if (parsed.costing) await saveInventoryCostData(parsed.costing as never);
+    if (restoreScope.accounting && parsed.accounting) await saveAccountingData(parsed.accounting as never);
+    if (restoreScope.accounting && parsed.commerce) await saveCommerceData(parsed.commerce as never);
+    if (restoreScope.accounting && parsed.costing) await saveInventoryCostData(parsed.costing as never);
 
     await bootState();
     saveAppState(true);
 
     // علامت برای جلوگیری از پیام «هنوز کالایی ثبت نشده» بعد از بازیابی موفق
-    try {
-      sessionStorage.setItem('anbarin_just_restored_external', String(restoredProducts.length));
-    } catch { /* ignore */ }
+    if (restoreScope.count) {
+      try { sessionStorage.setItem('anbarin_just_restored_external', String(restoredProducts.length)); } catch { /* ignore */ }
+    }
 
     toast(
       productCount > 0
@@ -402,13 +440,13 @@ export async function listExternalBackups(): Promise<Array<{ name: string; modif
     const status = await NativeDriveBackup.getStatus();
     if (status.connected) {
       const listed = await NativeDriveBackup.list();
-      for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\\.json$/i.test(f.name))
+      for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\.json$/i.test(f.name))
         result.push({ name: f.name, modified: f.modified ? Date.parse(f.modified) || 0 : 0, source: 'drive', id: f.id });
     }
   } catch (e) { console.warn('[Anbarin] drive backup listing failed', e); }
   try {
     const listed = await NativeAutoBackup.list();
-    for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\\.json$/i.test(f.name))
+    for (const f of listed.files || []) if (f?.name && /anbarin-auto.*\.json$/i.test(f.name))
       result.push({ name: f.name, modified: f.modified || 0, source: 'local' });
   } catch (e) { console.warn('[Anbarin] local backup listing failed', e); }
   return result.sort((a, b) => b.modified - a.modified);
@@ -416,66 +454,304 @@ export async function listExternalBackups(): Promise<Array<{ name: string; modif
 
 
 
-/** بازیابی نسخه انتخاب‌شده؛ اعتبارسنجی SHA-256 و snapshot اضطراری پیش از جایگزینی. */
+/** بازیابی نسخه انتخاب‌شده با اعتبارسنجی پیشینی، snapshot اضطراری و rollback چندلایه. */
 export async function restoreSelectedExternalBackup(
   backup: { name: string; source: 'drive' | 'local'; id?: string }
 ): Promise<{ ok: boolean; message: string }> {
   if (!isNativeAndroid()) return { ok: false, message: 'بازیابی نسخه‌های بیرونی فقط در اپ اندروید فعال است' };
+  const { idbPut, persistAppState } = await import('./storage');
+  let rollback: { app: Record<string, unknown>; accounting: unknown; commerce: unknown; costing: unknown; users: string | null; operator: string | null } | null = null;
+  let restoreStarted = false;
   try {
     const response = backup.source === 'drive'
       ? await NativeDriveBackup.read({ id: backup.id, name: backup.name })
       : await NativeAutoBackup.read({ name: backup.name });
     const raw = fromBase64(response.data);
-    const parsed = JSON.parse(raw) as Record<string, any>;
-    if (!parsed || parsed.schema !== 'anbarin-full-device-backup' || !parsed.app ||
-        !Array.isArray(parsed.app.products) ||
-        !parsed.app.products.every((p: unknown) => !!p && typeof p === 'object' && !Array.isArray(p))) {
-      throw new Error('ساختار فایل پشتیبان معتبر نیست');
-    }
-
-    // نسخه‌های جدید باید حتماً SHA-256 معتبر داشته باشند؛ نسخه‌های قدیمی‌تر قابل بازیابی می‌مانند.
-    if (parsed.integrity) {
-      if (parsed.integrity.algorithm !== 'SHA-256' || typeof parsed.integrity.digest !== 'string') {
-        throw new Error('ساختار امضای فایل معتبر نیست');
+    const fileValue = JSON.parse(raw) as Record<string, any> | BackupEnvelope;
+    let parsed: Record<string, any>;
+    if (isEncryptedBackup(fileValue)) {
+      let recovered: unknown;
+      const password = window.prompt('رمز بازیابی این نسخه را وارد کنید. برای بازیابی سازمانی، رمز را خالی بگذارید و لغو کنید.');
+      if (password !== null && password.length > 0) {
+        try { recovered = await decryptBackupWithPassword(fileValue, password); }
+        catch (passwordError) {
+          const useAdmin = window.confirm(`${passwordError instanceof Error ? passwordError.message : 'رمز بازیابی پذیرفته نشد'}\nآیا می‌خواهید مدیر اصلی سازمان با کلید خصوصی بازیابی کند؟`);
+          if (!useAdmin) throw passwordError;
+        }
       }
-      const { integrity, ...body } = parsed;
-      const actual = await sha256(body);
-      if (actual !== integrity.digest) throw new Error('کنترل SHA-256 ناموفق بود؛ فایل خراب یا تغییر داده شده است');
-    } else if (Number(parsed.version) >= 2) {
-      throw new Error('فایل جدید فاقد امضای SHA-256 است');
+      if (recovered === undefined) {
+        const packageText = window.prompt('مدیر اصلی: محتوای کامل فایل JSON کلید خصوصی سازمانی را وارد کنید.');
+        if (!packageText) throw new Error('بازیابی لغو شد؛ رمز عبور یا کلید خصوصی سازمانی لازم است');
+        const managerPassword = window.prompt('رمز محافظ کلید خصوصی مدیر را وارد کنید.');
+        if (!managerPassword) throw new Error('رمز محافظ کلید مدیر وارد نشد');
+        recovered = await decryptBackupWithOrganizationKeyPackage(fileValue, JSON.parse(packageText), managerPassword);
+      }
+      if (!recovered || typeof recovered !== 'object') throw new Error('محتوای رمزگشایی‌شده معتبر نیست');
+      parsed = recovered as Record<string, any>;
+    } else {
+      parsed = fileValue as Record<string, any>;
     }
 
-    // قبل از هر تغییری، وضعیت کامل فعلی در IndexedDB نگهداری می‌شود.
-    const { idbPut, persistAppState } = await import('./storage');
-    const emergency = await buildFullDeviceBackupPayload();
-    await idbPut('emergency_before_selected_restore', {
-      savedAt: new Date().toISOString(),
-      payload: emergency,
-      source: backup.name,
-    });
+    // مرحله ۱: نسخه‌های ۱ تا ۳ برای سازگاری پذیرفته می‌شوند؛ نسخه ۴ محدوده ماژول‌های مجاز را ثبت می‌کند.
+    const restoreScope = parsed && parsed.schema === 'anbarin-full-device-backup'
+      ? getBackupScopeFromPayload(parsed as { version?: number; scope?: { modules?: unknown } })
+      : { count: false, accounting: false, modules: [] };
+    if (!parsed || parsed.schema !== 'anbarin-full-device-backup' ||
+        (restoreScope.count && (!parsed.app || !Array.isArray(parsed.app.products) ||
+          !parsed.app.products.every((v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v)))) ||
+        (!restoreScope.count && !restoreScope.accounting)) {
+      throw new Error('مرحله ۱ اعتبارسنجی ناموفق: ساختار یا محدوده لایسنس فایل پشتیبان معتبر نیست');
+    }
+    const version = Number(parsed.version || 1);
+    if (!Number.isInteger(version) || version < 1 || version > 4) throw new Error('نسخه پشتیبان با این برنامه سازگار نیست');
 
+    // مرحله ۲: یکپارچگی رمزنگارانه؛ SHA-256 برای کشف خرابی/تغییر ناخواسته است، نه امضای هویت.
+    if (parsed.integrity) {
+      if (parsed.integrity.algorithm !== 'SHA-256' || typeof parsed.integrity.digest !== 'string')
+        throw new Error('مرحله ۲ اعتبارسنجی ناموفق: ساختار امضا معتبر نیست');
+      const { integrity, ...body } = parsed;
+      if (await sha256(body) !== integrity.digest) throw new Error('مرحله ۲ اعتبارسنجی ناموفق: کنترل SHA-256 شکست خورد');
+    } else if (version >= 2) {
+      throw new Error('مرحله ۲ اعتبارسنجی ناموفق: فایل جدید فاقد SHA-256 است');
+    }
+
+    // مرحله ۳: کنترل زیرساختارها پیش از هرگونه نوشتن.
+    if (restoreScope.accounting && parsed.accounting != null && (parsed.accounting.schemaVersion !== 1 || !Array.isArray(parsed.accounting.accounts) || !Array.isArray(parsed.accounting.journalEntries)))
+      throw new Error('مرحله ۳: ساختار حسابداری معتبر نیست');
+    if (restoreScope.accounting && parsed.commerce != null && !isValidCommerceBackup(parsed.commerce))
+      throw new Error('مرحله ۳: ساختار فاکتورها، ردیف‌های کالا یا تراکنش‌ها معتبر نیست');
+    if (restoreScope.accounting && parsed.costing != null && (parsed.costing.schemaVersion !== 1 || !Array.isArray(parsed.costing.layers) || !Array.isArray(parsed.costing.movements)))
+      throw new Error('مرحله ۳: ساختار بهای تمام‌شده معتبر نیست');
+
+    // مرحله ۴: ثبت وضعیت فعلی برای rollback و نسخه اضطراری قابل بازیابی.
+    const [currentAccounting, currentCommerce, currentCosting] = await Promise.all([
+      loadAccountingData(), loadCommerceData(), loadInventoryCostData(),
+    ]);
+    rollback = {
+      app: { products: [...products], settings: structuredClone(settings), session: structuredClone(session),
+        auditLog: structuredClone(auditLog), recentScans: structuredClone(recentScans), inventoryDocs: structuredClone(inventoryDocs) },
+      accounting: currentAccounting, commerce: currentCommerce, costing: currentCosting,
+      users: localStorage.getItem('anbarin_local_users_v1'), operator: localStorage.getItem('anbar_operator'),
+    };
+    const emergency = await buildFullDeviceBackupPayload({ includeAllModules: true });
+    await idbPut('emergency_before_selected_restore', { savedAt: new Date().toISOString(), payload: emergency, source: backup.name });
+    // نشانگر پایدار برای بازیابی پس از بسته‌شدن ناگهانی اپ/فرآیند؛ پیش از اولین نوشتن ثبت می‌شود.
+    localStorage.setItem('anbarin_restore_journal_v1', JSON.stringify({ version: 1, startedAt: new Date().toISOString(), source: backup.name }));
+
+    // مرحله ۵: اعمال تغییرات؛ نشانگر تا تأیید کامل همه لایه‌ها باقی می‌ماند.
+    restoreStarted = true;
     const app = parsed.app;
+    if (restoreScope.count && app) {
+      await persistAppState({
+        products: app.products,
+        settings: app.settings || settings,
+        session: app.session ?? null,
+        auditLog: Array.isArray(app.auditLog) ? app.auditLog : [],
+        recentScans: Array.isArray(app.recentScans) ? app.recentScans : [],
+        inventoryDocs: Array.isArray(app.inventoryDocs) ? app.inventoryDocs : [],
+      } as never);
+    }
+    if (restoreScope.accounting && parsed.accounting) await saveAccountingData(parsed.accounting as never);
+    if (restoreScope.accounting && parsed.commerce) await saveCommerceData(parsed.commerce as never);
+    if (restoreScope.accounting && parsed.costing) await saveInventoryCostData(parsed.costing as never);
+    if (Array.isArray(parsed.localUsers)) localStorage.setItem('anbarin_local_users_v1', JSON.stringify(parsed.localUsers));
+    if (typeof parsed.operator === 'string') localStorage.setItem('anbar_operator', parsed.operator);
+
+    await bootState();
+    saveAppState(true);
+    if (restoreScope.count && app) { try { sessionStorage.setItem('anbarin_just_restored_external', String(app.products.length)); } catch { /* ignore */ } }
+    localStorage.setItem('anbarin_last_restore_iso', new Date().toISOString());
+    localStorage.removeItem('anbarin_restore_journal_v1');
+    return { ok: true, message: restoreScope.count && app
+      ? `بازیابی و کنترل نهایی موفق؛ ${app.products.length.toLocaleString('fa-IR')} کالا`
+      : 'بازیابی اطلاعات حسابداری با موفقیت انجام شد' };
+  } catch (error) {
+    console.error('[Anbarin] selected backup restore failed', error);
+    let rollbackMessage = '';
+    if (restoreStarted && rollback) {
+      try {
+        await persistAppState(rollback.app as never);
+        await saveAccountingData(rollback.accounting as never);
+        await saveCommerceData(rollback.commerce as never);
+        await saveInventoryCostData(rollback.costing as never);
+        if (rollback.users === null) localStorage.removeItem('anbarin_local_users_v1');
+        else localStorage.setItem('anbarin_local_users_v1', rollback.users);
+        if (rollback.operator === null) localStorage.removeItem('anbar_operator');
+        else localStorage.setItem('anbar_operator', rollback.operator);
+        await bootState();
+        saveAppState(true);
+        rollbackMessage = ' اطلاعات قبلی با موفقیت بازگردانی شد.';
+        localStorage.removeItem('anbarin_restore_journal_v1');
+      } catch (rollbackError) {
+        console.error('[Anbarin] rollback failed', rollbackError);
+        rollbackMessage = ' هشدار بحرانی: بازگردانی خودکار کامل نشد؛ snapshot اضطراری در IndexedDB نگهداری شده است.';
+      }
+    }
+    return { ok: false, message: (error instanceof Error ? error.message : 'بازیابی ناموفق بود') + rollbackMessage };
+  }
+}
+
+/** بازیابی فایل دستی از همان موتور و سیاست لایسنس پشتیبان خودکار استفاده می‌کند. */
+export async function restoreBackupFile(file: File): Promise<{ ok: boolean; message: string }> {
+  const { idbPut, persistAppState } = await import('./storage');
+  let rollback: { app: Record<string, unknown>; accounting: unknown; commerce: unknown; costing: unknown } | null = null;
+  let restoreStarted = false;
+  try {
+    const raw = await file.text();
+    const value = JSON.parse(raw) as Record<string, any> | BackupEnvelope;
+    let parsed: Record<string, any>;
+    if (isEncryptedBackup(value)) {
+      let recovered: unknown;
+      const password = window.prompt('رمز بازیابی این نسخه را وارد کنید. برای بازیابی سازمانی، رمز را خالی بگذارید و لغو کنید.');
+      if (password !== null && password.length > 0) {
+        try { recovered = await decryptBackupWithPassword(value, password); }
+        catch (passwordError) {
+          const useAdmin = window.confirm(`${passwordError instanceof Error ? passwordError.message : 'رمز بازیابی پذیرفته نشد'}\nآیا می‌خواهید مدیر اصلی سازمان با کلید خصوصی بازیابی کند؟`);
+          if (!useAdmin) throw passwordError;
+        }
+      }
+      if (recovered === undefined) {
+        const packageText = window.prompt('مدیر اصلی: محتوای کامل فایل JSON کلید خصوصی سازمانی را وارد کنید.');
+        if (!packageText) throw new Error('بازیابی لغو شد؛ رمز عبور یا کلید خصوصی سازمانی لازم است');
+        const managerPassword = window.prompt('رمز محافظ کلید خصوصی مدیر را وارد کنید.');
+        if (!managerPassword) throw new Error('رمز محافظ کلید مدیر وارد نشد');
+        recovered = await decryptBackupWithOrganizationKeyPackage(value, JSON.parse(packageText), managerPassword);
+      }
+      if (!recovered || typeof recovered !== 'object') throw new Error('محتوای رمزگشایی‌شده معتبر نیست');
+      parsed = recovered as Record<string, any>;
+    } else parsed = value as Record<string, any>;
+
+    if (!parsed || parsed.schema !== 'anbarin-full-device-backup') throw new Error('ساختار فایل پشتیبان معتبر نیست.');
+    const restoreScope = getBackupScopeFromPayload(parsed as { version?: number; scope?: { modules?: unknown } });
+    if (!restoreScope.count && !restoreScope.accounting) throw new Error('این فایل هیچ ماژول مجاز و مشترکی با لایسنس فعلی ندارد.');
+    if (restoreScope.count && (!parsed.app || !Array.isArray(parsed.app.products) || !parsed.app.products.every((v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v))))
+      throw new Error('ساختار اطلاعات انبار در فایل پشتیبان معتبر نیست.');
+    const version = Number(parsed.version || 1);
+    if (!Number.isInteger(version) || version < 1 || version > 4) throw new Error('نسخه پشتیبان با این برنامه سازگار نیست.');
+    if (parsed.integrity) {
+      if (parsed.integrity.algorithm !== 'SHA-256' || typeof parsed.integrity.digest !== 'string') throw new Error('ساختار کنترل صحت فایل معتبر نیست.');
+      const { integrity, ...body } = parsed;
+      if (await sha256(body) !== integrity.digest) throw new Error('کنترل صحت فایل پشتیبان ناموفق بود.');
+    } else if (version >= 2) throw new Error('فایل پشتیبان فاقد اطلاعات کنترل صحت است.');
+    if (restoreScope.accounting && parsed.accounting != null && (parsed.accounting.schemaVersion !== 1 || !Array.isArray(parsed.accounting.accounts) || !Array.isArray(parsed.accounting.journalEntries)))
+      throw new Error('ساختار اطلاعات حسابداری معتبر نیست.');
+    if (restoreScope.accounting && parsed.commerce != null && !isValidCommerceBackup(parsed.commerce))
+      throw new Error('ساختار اطلاعات بازرگانی یا ردیف‌های فاکتور معتبر نیست.');
+    if (restoreScope.accounting && parsed.costing != null && (parsed.costing.schemaVersion !== 1 || !Array.isArray(parsed.costing.layers) || !Array.isArray(parsed.costing.movements)))
+      throw new Error('ساختار بهای تمام‌شده معتبر نیست.');
+
+    const [currentAccounting, currentCommerce, currentCosting] = await Promise.all([loadAccountingData(), loadCommerceData(), loadInventoryCostData()]);
+    rollback = {
+      app: { products: [...products], settings: structuredClone(settings), session: structuredClone(session), auditLog: structuredClone(auditLog), recentScans: structuredClone(recentScans), inventoryDocs: structuredClone(inventoryDocs) },
+      accounting: currentAccounting, commerce: currentCommerce, costing: currentCosting,
+    };
+    const emergency = await buildFullDeviceBackupPayload({ includeAllModules: true });
+    await idbPut('emergency_before_selected_restore', { savedAt: new Date().toISOString(), payload: emergency, source: file.name });
+    localStorage.setItem('anbarin_restore_journal_v1', JSON.stringify({ version: 1, startedAt: new Date().toISOString(), source: file.name }));
+    restoreStarted = true;
+    if (restoreScope.count && parsed.app) {
+      await persistAppState({
+        products: parsed.app.products,
+        settings: parsed.app.settings || settings,
+        session: parsed.app.session ?? null,
+        auditLog: Array.isArray(parsed.app.auditLog) ? parsed.app.auditLog : [],
+        recentScans: Array.isArray(parsed.app.recentScans) ? parsed.app.recentScans : [],
+        inventoryDocs: Array.isArray(parsed.app.inventoryDocs) ? parsed.app.inventoryDocs : [],
+      } as never);
+    }
+    if (restoreScope.accounting && parsed.accounting) await saveAccountingData(parsed.accounting as never);
+    if (restoreScope.accounting && parsed.commerce) await saveCommerceData(parsed.commerce as never);
+    if (restoreScope.accounting && parsed.costing) await saveInventoryCostData(parsed.costing as never);
+    await bootState();
+    saveAppState(true);
+    if (restoreScope.count && parsed.app) {
+      try { sessionStorage.setItem('anbarin_just_restored_external', String(parsed.app.products.length)); } catch { /* ignore */ }
+    }
+    localStorage.setItem('anbarin_last_restore_iso', new Date().toISOString());
+    localStorage.removeItem('anbarin_restore_journal_v1');
+    const restored: string[] = [];
+    if (restoreScope.count) restored.push('شمارش و انبار');
+    if (restoreScope.accounting) restored.push('حسابداری و بازرگانی');
+    return { ok: true, message: `بازیابی موفق: ${restored.join(' و ')}` };
+  } catch (error) {
+    console.error('[Anbarin] manual unified backup restore failed', error);
+    let rollbackMessage = '';
+    if (restoreStarted && rollback) {
+      try {
+        await persistAppState(rollback.app as never);
+        await saveAccountingData(rollback.accounting as never);
+        await saveCommerceData(rollback.commerce as never);
+        await saveInventoryCostData(rollback.costing as never);
+        await bootState();
+        saveAppState(true);
+        localStorage.removeItem('anbarin_restore_journal_v1');
+        rollbackMessage = ' اطلاعات قبلی بازگردانی شد.';
+      } catch (rollbackError) {
+        console.error('[Anbarin] manual restore rollback failed', rollbackError);
+        rollbackMessage = ' هشدار: بازگردانی خودکار کامل نشد؛ snapshot اضطراری نگهداری شده است.';
+      }
+    }
+    return { ok: false, message: (error instanceof Error ? error.message : 'بازیابی ناموفق بود') + rollbackMessage };
+  }
+}
+
+/**
+ * اگر اپ هنگام بازیابی بسته/کشته شده باشد، snapshot اضطراری را در شروع بعدی برمی‌گرداند.
+ * این مسیر فقط با وجود journal پایدار فعال می‌شود و در صورت شکست، نشانگر را نگه می‌دارد.
+ */
+export async function recoverInterruptedSelectedRestore(): Promise<'clean' | 'recovered' | 'failed'> {
+  let journal: { version?: number; source?: string } | null = null;
+  try {
+    const raw = localStorage.getItem('anbarin_restore_journal_v1');
+    if (!raw) return 'clean';
+    journal = JSON.parse(raw);
+    if (journal?.version !== 1) throw new Error('نشانگر بازیابی اضطراری ناشناخته است');
+
+    const { idbGet, persistAppState } = await import('./storage');
+    const snapshot = await idbGet<{ payload?: Record<string, any> }>('emergency_before_selected_restore');
+    const parsed = snapshot?.payload;
+    if (!parsed || parsed.schema !== 'anbarin-full-device-backup' || !parsed.app || !Array.isArray(parsed.app.products) ||
+        !parsed.app.products.every((item: unknown) => !!item && typeof item === 'object' && !Array.isArray(item)))
+      throw new Error('snapshot اضطراری معتبر یا کامل نیست');
+    const recoveryVersion = Number(parsed.version || 1);
+    if (!Number.isInteger(recoveryVersion) || recoveryVersion < 1 || recoveryVersion > 4)
+      throw new Error('نسخه snapshot اضطراری با این برنامه سازگار نیست');
+    // همه لایه‌ها پیش از اولین نوشتن بررسی می‌شوند تا snapshot ناقص داده‌های فعلی را نیمه‌کاره جایگزین نکند.
+    if (parsed.accounting != null && (parsed.accounting.schemaVersion !== 1 || !Array.isArray(parsed.accounting.accounts) || !Array.isArray(parsed.accounting.journalEntries)))
+      throw new Error('ساختار حسابداری snapshot اضطراری معتبر نیست');
+    if (parsed.commerce != null && !isValidCommerceBackup(parsed.commerce))
+      throw new Error('ساختار فاکتورها و ردیف‌های snapshot اضطراری معتبر نیست');
+    if (parsed.costing != null && (parsed.costing.schemaVersion !== 1 || !Array.isArray(parsed.costing.layers) || !Array.isArray(parsed.costing.movements)))
+      throw new Error('ساختار بهای تمام‌شده snapshot اضطراری معتبر نیست');
+    if (parsed.integrity?.algorithm === 'SHA-256') {
+      const { integrity, ...body } = parsed;
+      if (typeof integrity.digest !== 'string' || await sha256(body) !== integrity.digest)
+        throw new Error('کنترل یکپارچگی snapshot اضطراری ناموفق بود');
+    }
+
     await persistAppState({
-      products: app.products,
-      settings: app.settings || settings,
-      session: app.session ?? null,
-      auditLog: Array.isArray(app.auditLog) ? app.auditLog : [],
-      recentScans: Array.isArray(app.recentScans) ? app.recentScans : [],
-      inventoryDocs: Array.isArray(app.inventoryDocs) ? app.inventoryDocs : [],
+      products: parsed.app.products,
+      settings: parsed.app.settings || settings,
+      session: parsed.app.session ?? null,
+      auditLog: Array.isArray(parsed.app.auditLog) ? parsed.app.auditLog : [],
+      recentScans: Array.isArray(parsed.app.recentScans) ? parsed.app.recentScans : [],
+      inventoryDocs: Array.isArray(parsed.app.inventoryDocs) ? parsed.app.inventoryDocs : [],
     } as never);
     if (parsed.accounting) await saveAccountingData(parsed.accounting as never);
     if (parsed.commerce) await saveCommerceData(parsed.commerce as never);
     if (parsed.costing) await saveInventoryCostData(parsed.costing as never);
     if (Array.isArray(parsed.localUsers)) localStorage.setItem('anbarin_local_users_v1', JSON.stringify(parsed.localUsers));
     if (typeof parsed.operator === 'string') localStorage.setItem('anbar_operator', parsed.operator);
-
     await bootState();
     saveAppState(true);
-    try { sessionStorage.setItem('anbarin_just_restored_external', String(app.products.length)); } catch { /* ignore */ }
-    return { ok: true, message: `بازیابی موفق؛ ${app.products.length.toLocaleString('fa-IR')} کالا` };
+    localStorage.removeItem('anbarin_restore_journal_v1');
+    localStorage.setItem('anbarin_last_restore_recovery_iso', new Date().toISOString());
+    toast('بازیابی قبلی نیمه‌تمام بود؛ snapshot امن قبلی با موفقیت بازگردانده شد', 'success');
+    return 'recovered';
   } catch (error) {
-    console.error('[Anbarin] selected backup restore failed', error);
-    return { ok: false, message: error instanceof Error ? error.message : 'بازیابی ناموفق بود' };
+    console.error('[Anbarin] interrupted restore recovery failed', error);
+    toast('هشدار: بازیابی قبلی نیمه‌تمام مانده و snapshot اضطراری خودکار بازنگشت؛ داده‌ها را پاک نکنید', 'error');
+    return 'failed';
   }
 }
 
