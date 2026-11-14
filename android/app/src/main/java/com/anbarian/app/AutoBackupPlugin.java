@@ -191,7 +191,7 @@ public class AutoBackupPlugin extends Plugin {
             } else {
                 writtenUri = writeToDefault(safe, bytes);
             }
-            pruneOldBackups();
+            // Retention is unlimited by default; never delete recovery points implicitly.
 
             JSObject res = new JSObject();
             res.put("ok", true);
