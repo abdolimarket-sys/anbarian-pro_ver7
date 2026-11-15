@@ -102,7 +102,7 @@ Cancel = انصراف
       <div class="header-top">
         <div class="logo-area">
           <strong>انبارین</strong>
-          <span class="version">v2.0.4</span>
+          <span class="version">v2.0.5</span>
           <span class="role-badge" id="roleBadge">—</span>
         </div>
         <div class="header-stats" id="headerStats"></div>
