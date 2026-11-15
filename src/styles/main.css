@@ -3848,3 +3848,131 @@ input[data-pay-amount] {
     font-size: 0.78rem !important;
   }
 }
+
+/* —— سامانه مؤدیان: چیدمان فشرده کادرها —— */
+#taxpayerModuleCard .tax-queue-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+#taxpayerModuleCard .tax-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+#taxpayerModuleCard .tax-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 6px 0 8px;
+  align-items: end;
+}
+#taxpayerModuleCard .tax-field-grid label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-soft, #5a7268);
+  min-width: 0;
+}
+#taxpayerModuleCard .tax-field-grid .search-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+#taxpayerModuleCard .tax-field-grid-main {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+#taxpayerModuleCard .tax-field-grid-pay {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+#taxpayerModuleCard .tax-field-grid-line {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+#taxpayerModuleCard .tax-subcard {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: var(--card-soft, transparent);
+}
+#taxpayerModuleCard .tax-subcard-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+#taxpayerModuleCard .tax-section-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin: 8px 0 2px;
+  color: var(--text-soft, #5a7268);
+}
+#taxpayerModuleCard .tax-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+#taxpayerModuleCard .tax-hint-compact {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+#taxpayerModuleCard .tax-issues {
+  margin: 6px 0;
+  padding-inline-start: 1.1rem;
+}
+#taxpayerModuleCard .tax-fold {
+  margin: 6px 0;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 4px 8px;
+}
+#taxpayerModuleCard .tax-fold > summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 4px 0;
+  list-style: none;
+}
+#taxpayerModuleCard .tax-fold > summary::-webkit-details-marker { display: none; }
+#taxpayerModuleCard .tax-map-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(90px, 0.7fr) minmax(100px, 0.7fr) auto;
+  gap: 6px;
+  align-items: end;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+#taxpayerModuleCard .tax-map-row label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-width: 0;
+}
+#taxpayerModuleCard .tax-map-reason {
+  grid-column: 1 / -1;
+}
+#taxpayerModuleCard .form-grid label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 0;
+}
+@media (max-width: 560px) {
+  #taxpayerModuleCard .tax-map-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  #taxpayerModuleCard .tax-map-row > button {
+    grid-column: 1 / -1;
+  }
+  #taxpayerModuleCard .tax-field-grid,
+  #taxpayerModuleCard .tax-field-grid-main,
+  #taxpayerModuleCard .tax-field-grid-pay,
+  #taxpayerModuleCard .tax-field-grid-line {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -319,11 +319,42 @@ async function bootApp() {
     refreshLists();
     loadSheetJS().then((ok) => console.log('[Anbarin] SheetJS:', ok));
 
+    // مدیریت نسخه و Service Worker: پس از نصب/به‌روزرسانی APK یا وب، کش کهنه دور ریخته می‌شود
+    const APP_VERSION = '2.0.5';
+    try {
+      const prev = localStorage.getItem('anbarin_app_version') || '';
+      if (prev && prev !== APP_VERSION) {
+        if ('caches' in window) {
+          caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('anbarin-')).map((k) => caches.delete(k)))).catch(() => {});
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations?.().then((regs) => regs.forEach((r) => r.update())).catch(() => {});
+        }
+      }
+      localStorage.setItem('anbarin_app_version', APP_VERSION);
+    } catch { /* ignore quota / private mode */ }
+
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').then(
-        (r) => console.log('[Anbarin] SW registered', r.scope),
-        (e) => console.warn('[Anbarin] SW failed', e)
-      );
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+      navigator.serviceWorker.register('./sw.js').then((reg) => {
+        console.log('[Anbarin] SW registered', reg.scope);
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              sw.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+        reg.update().catch(() => {});
+      }, (e) => console.warn('[Anbarin] SW failed', e));
     }
 
     if (source === 'localStorage-migrated') {
@@ -396,7 +427,7 @@ function renderShell() {
         <div class="logo-area">
           <img class="brand-logo" src="./logo.png" alt="لوگوی انبارین" />
           <div class="brand-title"><strong>انبارین</strong>
-          <span class="version">v2.0.4</span>
+          <span class="version">v2.0.5</span>
           <span class="role-badge" id="roleBadge">—</span></div>
         </div>
         <div class="header-stats" id="headerStats"></div>
